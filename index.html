@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#111111">
+<title>Tienda Italy Mau.dim</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;color:#171717;padding-bottom:82px}
+header{background:linear-gradient(135deg,#111,#292929);color:#fff;padding:18px 16px;text-align:center;position:sticky;top:0;z-index:20;box-shadow:0 2px 10px #0003}
+header h1{margin:0;font-size:22px}
+header p{margin:5px 0 0;font-size:13px;color:#ddd}
+main{max-width:700px;margin:auto;padding:15px}.screen{display:none}.screen.active{display:block}
+.section-title{margin:5px 0 14px;font-size:21px}.subtitle{color:#777;font-size:13px;margin-top:-8px;margin-bottom:16px}
+.products-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.product-card{background:#fff;border:1px solid #e4e4e4;border-radius:16px;padding:16px 12px;text-align:center;box-shadow:0 2px 7px #0000000f;cursor:pointer}
+.product-card:active{transform:scale(.97)}.product-icon{font-size:38px;margin-bottom:8px}.product-name{font-weight:bold;font-size:16px}
+.product-price{margin-top:6px;font-size:15px;color:#16803c;font-weight:bold}.stock{margin-top:5px;color:#777;font-size:12px}.stock.low{color:#c0392b;font-weight:bold}
+.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #0000000f}
+.cart-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #eee;padding:12px 0}.cart-item:last-child{border-bottom:0}
+.cart-info{flex:1}.cart-name{font-weight:bold}.cart-price{font-size:13px;color:#777;margin-top:3px}
+.quantity-controls{display:flex;align-items:center;gap:7px}.quantity-controls button{width:34px;height:34px;border:0;border-radius:10px;background:#eee;font-size:20px}
+.quantity{min-width:22px;text-align:center;font-weight:bold}.total-box{background:#111;color:#fff;border-radius:16px;padding:18px;margin-top:15px}
+.total-row{display:flex;justify-content:space-between;margin-bottom:8px}.total-final{border-top:1px solid #444;padding-top:12px;margin-top:10px;font-size:25px;font-weight:bold}
+button.primary{width:100%;border:0;border-radius:13px;background:#16803c;color:#fff;padding:15px;font-size:17px;font-weight:bold;cursor:pointer;margin-top:12px}
+button.secondary{border:0;border-radius:10px;background:#eee;padding:10px 13px;font-weight:bold;cursor:pointer}
+button.danger{border:0;border-radius:10px;background:#ffe4e1;color:#b42318;padding:9px 11px;font-weight:bold;cursor:pointer}
+.empty{text-align:center;color:#888;padding:25px 10px}
+.inventory-item,.sale-item,.product-admin-item{background:#fff;border-radius:15px;padding:15px;margin-bottom:10px;box-shadow:0 2px 7px #0000000d}
+.inventory-top,.sale-top,.admin-top{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.inventory-name,.sale-title,.admin-name{font-weight:bold;font-size:16px}.inventory-details{color:#777;font-size:13px;margin-top:7px}.inventory-stock{font-size:21px;font-weight:bold}
+.positive{color:#16803c}.negative{color:#c0392b}.sale-total{font-weight:bold;font-size:18px}.sale-date{color:#777;font-size:12px;margin-top:5px}
+.sale-products{margin-top:9px;color:#555;font-size:13px;line-height:1.5}.admin-actions{display:flex;gap:7px;margin-top:12px}.admin-actions button{flex:1}
+label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:11px;font-size:16px;background:#fff;margin-bottom:13px;outline:none}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:15px}
+.stat{background:#fff;border-radius:15px;padding:15px;box-shadow:0 2px 7px #0000000d}.stat-label{color:#777;font-size:12px}.stat-value{margin-top:6px;font-size:22px;font-weight:bold}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:70px;background:#fff;border-top:1px solid #ddd;display:grid;grid-template-columns:repeat(4,1fr);z-index:50;box-shadow:0 -3px 12px #00000014}
+.nav-btn{border:0;background:#fff;color:#777;font-size:11px;cursor:pointer;padding:5px}.nav-btn span{display:block;font-size:23px;margin-bottom:3px}.nav-btn.active{color:#111;font-weight:bold}
+.modal{display:none;position:fixed;inset:0;background:#0009;z-index:100;padding:20px;align-items:center;justify-content:center}.modal.show{display:flex}
+.modal-content{background:#fff;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;border-radius:18px;padding:20px}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}.modal-header h2{margin:0;font-size:20px}
+.close{border:0;background:#eee;width:36px;height:36px;border-radius:50%;font-size:20px}.success-message{text-align:center;padding:20px}.success-icon{font-size:55px}
+.hint{background:#f7f7f7;border-radius:11px;padding:11px;color:#666;font-size:12px;margin-bottom:14px}
+@media(min-width:600px){.products-grid{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+
+<header>
+<h1>🏪 Tienda Italy Mau.dim</h1>
+<p>Ventas e inventario offline</p>
+</header>
+
+<main>
+<section id="screen-sale" class="screen active">
+<h2 class="section-title">🛒 Nueva venta</h2>
+<p class="subtitle">Toca un producto para añadirlo al carrito.</p>
+<div id="saleProducts" class="products-grid"></div>
+<div class="card">
+<h3>🛒 Carrito</h3>
+<div id="cartContainer"><div class="empty">El carrito está vacío.</div></div>
+<div id="totalBox" class="total-box" style="display:none">
+<div class="total-row"><span>Productos</span><span id="cartUnits">0</span></div>
+<div class="total-row total-final"><span>TOTAL</span><span id="cartTotal">$0.00</span></div>
+<button class="primary" onclick="openPaymentModal()">💵 COBRAR</button>
+</div>
+</div>
+</section>
+
+<section id="screen-inventory" class="screen">
+<h2 class="section-title">📦 Inventario</h2>
+<p class="subtitle">Control de existencias de la tienda.</p>
+<div id="inventoryContainer"></div>
+</section>
+
+<section id="screen-sales" class="screen">
+<h2 class="section-title">📊 Ventas</h2>
+<p class="subtitle">Resumen e historial de ventas.</p>
+<div class="stats-grid">
+<div class="stat"><div class="stat-label">VENTAS DE HOY</div><div id="todaySalesCount" class="stat-value">0</div></div>
+<div class="stat"><div class="stat-label">TOTAL DE HOY</div><div id="todaySalesTotal" class="stat-value">$0.00</div></div>
+</div>
+<div id="salesHistory"></div>
+</section>
+
+<section id="screen-products" class="screen">
+<h2 class="section-title">⚙️ Productos</h2>
+<p class="subtitle">Administra los productos de tu tienda.</p>
+<button class="primary" onclick="openProductModal()">➕ Agregar producto</button>
+<br><br>
+<div id="productsAdmin"></div>
+</section>
+</main>
+
+<nav class="bottom-nav">
+<button class="nav-btn active" onclick="showScreen('sale',this)"><span>🛒</span>Vender</button>
+<button class="nav-btn" onclick="showScreen('inventory',this)"><span>📦</span>Inventario</button>
+<button class="nav-btn" onclick="showScreen('sales',this)"><span>📊</span>Ventas</button>
+<button class="nav-btn" onclick="showScreen('products',this)"><span>⚙️</span>Productos</button>
+</nav>
+
+<div id="productModal" class="modal">
+<div class="modal-content">
+<div class="modal-header"><h2 id="productModalTitle">Nuevo producto</h2><button class="close" onclick="closeProductModal()">×</button></div>
+<input type="hidden" id="editingProductId">
+<label>Nombre del producto</label><input id="productName" type="text" placeholder="Ej. Refresco">
+<label>Precio de venta</label><input id="productPrice" type="number" min="0" step="0.01" placeholder="0.00">
+<label>Costo de compra (opcional)</label><input id="productCost" type="number" min="0" step="0.01" placeholder="Puede cambiar según la compra">
+<div class="form-grid">
+<div><label>Existencias</label><input id="productStock" type="number" min="0" step="1" placeholder="0"></div>
+<div><label>Unidad</label><select id="productUnit"><option value="unidad">Unidad</option><option value="libra">Libra</option><option value="kg">Kilogramo</option></select></div>
+</div>
+<div class="hint">El costo es opcional. Puedes modificarlo cada vez que cambie el costo de compra.</div>
+<button class="primary" onclick="saveProduct()">💾 Guardar producto</button>
+</div>
+</div>
+
+<div id="paymentModal" class="modal">
+<div class="modal-content">
+<div class="modal-header"><h2>💵 Cobrar</h2><button class="close" onclick="closePaymentModal()">×</button></div>
+<div class="card"><div class="total-row"><span>Total de la venta</span><strong id="paymentTotal">$0.00</strong></div></div>
+<label>Método de pago</label>
+<select id="paymentMethod"><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>Otro</option></select>
+<button class="primary" onclick="completeSale()">✅ Confirmar venta</button>
+</div>
+</div>
+
+<div id="successModal" class="modal">
+<div class="modal-content">
+<div class="success-message">
+<div class="success-icon">✅</div>
+<h2>Venta registrada</h2>
+<p id="successDetails"></p>
+<button class="primary" onclick="closeSuccessModal()">Continuar</button>
+</div>
+</div>
+</div>
+
+<script>
+const DEFAULT_PRODUCTS=[
+{id:"p1",name:"Aceite",price:0,cost:0,stock:0,unit:"unidad",icon:"🫒"},
+{id:"p2",name:"Arroz",price:0,cost:0,stock:0,unit:"unidad",icon:"🍚"},
+{id:"p3",name:"Croquetas",price:0,cost:0,stock:0,unit:"unidad",icon:"🥟"},
+{id:"p4",name:"Pan de barra",price:0,cost:0,stock:0,unit:"unidad",icon:"🥖"},
+{id:"p5",name:"Pan de bolsa",price:0,cost:0,stock:0,unit:"unidad",icon:"🍞"}
+];
+
+let products=loadData("italy_products",null);
+let sales=loadData("italy_sales",[]);
+let cart=[];
+
+if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
+
+function saveData(key,value){localStorage.setItem(key,JSON.stringify(value))}
+function loadData(key,fallback){try{const d=localStorage.getItem(key);return d===null?fallback:JSON.parse(d)}catch(e){return fallback}}
+function generateId(){return Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function getProduct(id){return products.find(p=>p.id===id)}
+function money(v){return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(v)||0)}
+function esc(v){return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
+
+function showScreen(name,btn){
+document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+document.getElementById("screen-"+name).classList.add("active");
+document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+if(btn)btn.classList.add("active");
+if(name==="sale"){renderSaleProducts();renderCart()}
+if(name==="inventory")renderInventory();
+if(name==="sales")renderSales();
+if(name==="products")renderProductsAdmin();
+window.scrollTo(0,0)
+}
+
+function renderSaleProducts(){
+const c=document.getElementById("saleProducts");
+c.innerHTML=products.length?products.map(p=>{
+const stock=Number(p.stock)||0;
+return `<div class="product-card" style="${stock<=0?"opacity:.55":""}" onclick="addToCart('${p.id}')">
+<div class="product-icon">${p.icon||"🛒"}</div>
+<div class="product-name">${esc(p.name)}</div>
+<div class="product-price">${money(p.price)}</div>
+<div class="stock ${stock<=3?"low":""}">Stock: ${stock} ${p.unit||"unidad"}</div>
+</div>`}).join(""):`<div class="card">No hay productos.</div>`
+}
+
+function addToCart(id){
+const p=getProduct(id);if(!p)return;
+if(Number(p.stock)<=0){alert("Este producto no tiene existencias.");return}
+let item=cart.find(i=>i.productId===id);
+if(item){if(item.quantity>=Number(p.stock)){alert("No puedes agregar más unidades de las disponibles.");return}item.quantity++}
+else cart.push({productId:id,quantity:1});
+renderCart()
+}
+function changeCartQuantity(id,n){
+const item=cart.find(i=>i.productId===id);if(!item)return;
+const p=getProduct(id);item.quantity+=n;
+if(item.quantity<=0)cart=cart.filter(i=>i.productId!==id);
+if(item.quantity>Number(p.stock))item.quantity=Number(p.stock);
+renderCart()
+}
+function getCartTotal(){return cart.reduce((t,i)=>{const p=getProduct(i.productId);return t+(p?Number(p.price)*i.quantity:0)},0)}
+function getCartUnits(){return cart.reduce((t,i)=>t+i.quantity,0)}
+
+function renderCart(){
+const c=document.getElementById("cartContainer"),box=document.getElementById("totalBox");
+if(!cart.length){c.innerHTML='<div class="empty">El carrito está vacío.</div>';box.style.display="none";return}
+c.innerHTML=cart.map(i=>{const p=getProduct(i.productId);return `<div class="cart-item">
+<div class="cart-info"><div class="cart-name">${p.icon||"🛒"} ${esc(p.name)}</div><div class="cart-price">${money(p.price)} × ${i.quantity} = ${money(Number(p.price)*i.quantity)}</div></div>
+<div class="quantity-controls"><button onclick="changeCartQuantity('${p.id}',-1)">−</button><div class="quantity">${i.quantity}</div><button onclick="changeCartQuantity('${p.id}',1)">+</button></div>
+</div>`}).join("");
+document.getElementById("cartUnits").textContent=getCartUnits();
+document.getElementById("cartTotal").textContent=money(getCartTotal());
+box.style.display="block"
+}
+
+function openPaymentModal(){if(!cart.length){alert("El carrito está vacío.");return}document.getElementById("paymentTotal").textContent=money(getCartTotal());document.getElementById("paymentModal").classList.add("show")}
+function closePaymentModal(){document.getElementById("paymentModal").classList.remove("show")}
+
+function completeSale(){
+if(!cart.length)return;
+for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert("No hay suficiente inventario.");return}}
+const items=cart.map(i=>{const p=getProduct(i.productId);return{productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:Number(p.cost)||0,subtotal:Number(p.price)*i.quantity}});
+cart.forEach(i=>{getProduct(i.productId).stock-=i.quantity});
+const total=items.reduce((s,i)=>s+i.subtotal,0);
+const costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
+const sale={id:generateId(),date:new Date().toISOString(),payment:document.getElementById("paymentMethod").value,items,total,costTotal,profit:total-costTotal};
+sales.unshift(sale);
+saveData("italy_products",products);saveData("italy_sales",sales);cart=[];
+closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
+document.getElementById("successDetails").innerHTML=`Total: <strong>${money(total)}</strong><br>Pago con: ${sale.payment}`;
+document.getElementById("successModal").classList.add("show")
+}
+function closeSuccessModal(){document.getElementById("successModal").classList.remove("show")}
+
+function renderInventory(){
+const c=document.getElementById("inventoryContainer");
+c.innerHTML=products.length?products.map(p=>{const stock=Number(p.stock)||0;return `<div class="inventory-item">
+<div class="inventory-top"><div><div class="inventory-name">${p.icon||"🛒"} ${esc(p.name)}</div><div class="inventory-details">Precio: ${money(p.price)} · ${p.unit||"unidad"}</div></div>
+<div class="inventory-stock ${stock<=3?"negative":"positive"}">${stock}</div></div>
+<div style="display:flex;gap:8px;margin-top:12px"><button class="secondary" onclick="changeStock('${p.id}',-1)">− 1</button><button class="secondary" onclick="changeStock('${p.id}',1)">+ 1</button><button class="secondary" onclick="setStock('${p.id}')">Cambiar</button></div>
+</div>`}).join(""):'<div class="card empty">No hay productos.</div>'
+}
+function changeStock(id,n){const p=getProduct(id);if(!p)return;let s=Number(p.stock)+n;if(s<0){alert("El inventario no puede ser negativo.");return}p.stock=s;saveData("italy_products",products);renderInventory();renderSaleProducts()}
+function setStock(id){const p=getProduct(id);if(!p)return;const v=prompt("Nueva cantidad para "+p.name,p.stock);if(v===null)return;const s=Number(v);if(!Number.isFinite(s)||s<0){alert("Cantidad no válida.");return}p.stock=Math.floor(s);saveData("italy_products",products);renderInventory();renderSaleProducts()}
+
+function renderSales(){
+const today=new Date().toLocaleDateString();
+const ts=sales.filter(s=>new Date(s.date).toLocaleDateString()===today);
+document.getElementById("todaySalesCount").textContent=ts.length;
+document.getElementById("todaySalesTotal").textContent=money(ts.reduce((a,s)=>a+Number(s.total),0));
+const c=document.getElementById("salesHistory");
+if(!sales.length){c.innerHTML='<div class="card empty">Todavía no hay ventas registradas.</div>';return}
+c.innerHTML=sales.map(s=>{const d=new Date(s.date);return `<div class="sale-item"><div class="sale-top"><div><div class="sale-title">Venta</div><div class="sale-date">${d.toLocaleDateString()} ${d.toLocaleTimeString()}</div></div><div class="sale-total">${money(s.total)}</div></div><div class="sale-products">${s.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join("<br>")}</div><div style="margin-top:8px;color:#777;font-size:12px">Pago: ${esc(s.payment)}</div></div>`}).join("")
+}
+
+function renderProductsAdmin(){
+const c=document.getElementById("productsAdmin");
+if(!products.length){c.innerHTML='<div class="card empty">No hay productos.</div>';return}
+c.innerHTML=products.map(p=>`<div class="product-admin-item"><div class="admin-top"><div><div class="admin-name">${p.icon||"🛒"} ${esc(p.name)}</div><div style="color:#777;font-size:13px;margin-top:4px">Precio: ${money(p.price)} · Stock: ${p.stock} · ${p.unit||"unidad"}</div></div></div>
+<div class="admin-actions"><button class="secondary" onclick="openProductModal('${p.id}')">✏️ Editar</button><button class="danger" onclick="deleteProduct('${p.id}')">🗑️ Eliminar</button></div></div>`).join("")
+}
+
+function openProductModal(id=null){
+document.getElementById("editingProductId").value=id||"";
+if(id){const p=getProduct(id);if(!p)return;document.getElementById("productModalTitle").textContent="Editar producto";document.getElementById("productName").value=p.name;document.getElementById("productPrice").value=p.price;document.getElementById("productCost").value=p.cost||"";document.getElementById("productStock").value=p.stock;document.getElementById("productUnit").value=p.unit||"unidad"}
+else{document.getElementById("productModalTitle").textContent="Nuevo producto";document.getElementById("productName").value="";document.getElementById("productPrice").value="";document.getElementById("productCost").value="";document.getElementById("productStock").value=0;document.getElementById("productUnit").value="unidad"}
+document.getElementById("productModal").classList.add("show")
+}
+function closeProductModal(){document.getElementById("productModal").classList.remove("show")}
+
+function saveProduct(){
+const id=document.getElementById("editingProductId").value;
+const name=document.getElementById("productName").value.trim();
+const price=Number(document.getElementById("productPrice").value);
+const cv=document.getElementById("productCost").value;
+const cost=cv===""?0:Number(cv);
+const stock=Number(document.getElementById("productStock").value);
+const unit=document.getElementById("productUnit").value;
+if(!name){alert("Escribe el nombre del producto.");return}
+if(!Number.isFinite(price)||price<0){alert("Introduce un precio válido.");return}
+if(!Number.isFinite(cost)||cost<0){alert("Introduce un costo válido o déjalo vacío.");return}
+if(!Number.isFinite(stock)||stock<0){alert("Introduce una cantidad válida.");return}
+if(id){const p=getProduct(id);p.name=name;p.price=price;p.cost=cost;p.stock=Math.floor(stock);p.unit=unit}
+else products.push({id:generateId(),name,price,cost,stock:Math.floor(stock),unit,icon:"🛒"});
+saveData("italy_products",products);closeProductModal();renderProductsAdmin();renderSaleProducts();renderInventory()
+}
+function deleteProduct(id){
+const p=getProduct(id);if(!p)return;
+if(!confirm(`¿Eliminar "${p.name}"?`))return;
+products=products.filter(x=>x.id!==id);cart=cart.filter(x=>x.productId!==id);
+saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();renderInventory();renderCart()
+}
+
+renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();
+</script>
+</body>
+</html>
