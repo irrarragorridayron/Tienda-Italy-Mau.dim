@@ -45,24 +45,24 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}.modal-header h2{margin:0;font-size:20px}
 .close{border:0;background:#eee;width:36px;height:36px;border-radius:50%;font-size:20px}.success-message{text-align:center;padding:20px}.success-icon{font-size:55px}
 .hint{background:#f7f7f7;border-radius:11px;padding:11px;color:#666;font-size:12px;margin-bottom:14px}
-@media(min-width:600px){.products-grid{grid-template-columns:repeat(3,1fr)}}
 
-/* IPV — Inventario a Precio de Venta */
-.ipv-summary{background:#111;color:#fff;border-radius:16px;padding:16px;margin-bottom:14px}
-.ipv-summary-title{font-size:13px;color:#ccc}
-.ipv-summary-value{font-size:28px;font-weight:bold;margin-top:5px}
-.ipv-table-wrap{overflow-x:auto;background:#fff;border-radius:15px;box-shadow:0 2px 8px #0000000f}
-.ipv-table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}
-.ipv-table th{background:#111;color:#fff;padding:10px 8px;text-align:right;white-space:nowrap}
-.ipv-table th:first-child,.ipv-table th:nth-child(2){text-align:left}
-.ipv-table td{padding:10px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap}
-.ipv-table td:first-child,.ipv-table td:nth-child(2){text-align:left}
+.ipv-total-card{background:#111;color:#fff;text-align:center}
+.ipv-total-label{font-size:12px;color:#ccc}
+.ipv-grand-total{font-size:30px;font-weight:bold;margin-top:7px}
+.ipv-table-wrap{overflow-x:auto}
+.ipv-table{width:100%;border-collapse:collapse;min-width:900px;font-size:12px}
+.ipv-table th{background:#111;color:#fff;padding:9px 7px;text-align:center;white-space:nowrap}
+.ipv-table td{border-bottom:1px solid #eee;padding:9px 7px;text-align:right;white-space:nowrap}
+.ipv-table td:first-child,.ipv-table th:first-child{text-align:left}
 .ipv-table tr:last-child td{border-bottom:0}
-.ipv-total-row td{font-weight:bold;background:#f5f5f5}
-.ipv-help{background:#f7f7f7;border-radius:12px;padding:12px;margin-bottom:14px;color:#666;font-size:12px;line-height:1.5}
-.ipv-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.ipv-actions button{flex:1;min-width:130px}
+.ipv-amount{font-weight:bold;color:#16803c}
+.ipv-movement{display:flex;gap:8px;align-items:center;margin-top:12px}
+.ipv-movement button{flex:1}
+@media(max-width:599px){
+  .ipv-table{font-size:11px}
+}
 
+@media(min-width:600px){.products-grid{grid-template-columns:repeat(3,1fr)}}
 </style>
 </head>
 <body>
@@ -90,14 +90,19 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 
 <section id="screen-inventory" class="screen">
 <h2 class="section-title">📦 IPV — Inventario a Precio de Venta</h2>
-<p class="subtitle">Control de existencias y valor del inventario a precio de venta.</p>
-<div class="ipv-help"><strong>IPV:</strong> el valor de cada producto se calcula con la existencia actual × precio de venta. Las ventas disminuyen automáticamente la existencia y las entradas la aumentan.</div>
-<div class="ipv-summary"><div class="ipv-summary-title">VALOR TOTAL DEL INVENTARIO A PRECIO DE VENTA</div><div id="ipvGrandTotal" class="ipv-summary-value">$0.00</div></div>
-<div class="ipv-table-wrap"><table class="ipv-table">
-<thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead>
-<tbody id="ipvInventoryBody"></tbody><tfoot id="ipvInventoryFoot"></tfoot>
-</table></div>
-<div class="ipv-actions"><button class="secondary" onclick="openIPVEntryModal()">➕ Registrar entrada</button><button class="secondary" onclick="openIPVExitModal()">➖ Registrar otra salida</button></div>
+<p class="subtitle">Control del inventario valorizado al precio de venta.</p>
+<div class="card ipv-total-card">
+  <div class="ipv-total-label">VALOR TOTAL DEL INVENTARIO A PRECIO DE VENTA</div>
+  <div id="ipvGrandTotal" class="ipv-grand-total">$0.00</div>
+</div>
+<div class="card">
+  <div class="hint">El IPV muestra la existencia de cada producto y su importe al precio de venta. Las ventas, entradas y otras salidas actualizan automáticamente las existencias.</div>
+  <div id="inventoryContainer"></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+  <button class="primary" style="margin-top:0" onclick="openIPVMovementModal('entry')">➕ Registrar entrada</button>
+  <button class="secondary" style="padding:15px" onclick="openIPVMovementModal('exit')">➖ Registrar otra salida</button>
+</div>
 </section>
 
 <section id="screen-sales" class="screen">
@@ -152,14 +157,6 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 </div>
 </div>
 
-<div id="ipvEntryModal" class="modal"><div class="modal-content">
-<div class="modal-header"><h2>➕ Entrada de mercancía</h2><button class="close" onclick="closeIPVEntryModal()">×</button></div>
-<label>Producto</label><select id="ipvEntryProduct"></select><label>Cantidad de entrada</label><input id="ipvEntryQty" type="number" min="1" step="1" placeholder="0">
-<button class="primary" onclick="saveIPVEntry()">💾 Registrar entrada</button></div></div>
-<div id="ipvExitModal" class="modal"><div class="modal-content">
-<div class="modal-header"><h2>➖ Otra salida</h2><button class="close" onclick="closeIPVExitModal()">×</button></div>
-<label>Producto</label><select id="ipvExitProduct"></select><label>Cantidad de salida</label><input id="ipvExitQty" type="number" min="1" step="1" placeholder="0">
-<button class="primary" onclick="saveIPVExit()">💾 Registrar salida</button></div></div>
 <div id="successModal" class="modal">
 <div class="modal-content">
 <div class="success-message">
@@ -168,6 +165,19 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <p id="successDetails"></p>
 <button class="primary" onclick="closeSuccessModal()">Continuar</button>
 </div>
+</div>
+</div>
+
+
+<div id="ipvMovementModal" class="modal">
+<div class="modal-content">
+<div class="modal-header"><h2 id="ipvMovementTitle">➕ Registrar entrada</h2><button class="close" onclick="closeIPVMovementModal()">×</button></div>
+<label>Producto</label>
+<select id="ipvMovementProduct"></select>
+<label>Cantidad</label>
+<input id="ipvMovementQuantity" type="number" min="1" step="1" placeholder="Cantidad">
+<div id="ipvMovementHint" class="hint"></div>
+<button class="primary" onclick="saveIPVMovement()">💾 Registrar movimiento</button>
 </div>
 </div>
 
@@ -183,8 +193,21 @@ const DEFAULT_PRODUCTS=[
 let products=loadData("italy_products",null);
 let sales=loadData("italy_sales",[]);
 let cart=[];
+let ipvMovementType="entry";
 
 if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
+
+function ensureIPVData(){
+  products.forEach(p=>{
+    const stock=Number(p.stock)||0;
+    if(!Number.isFinite(Number(p.ipvInitialStock))) p.ipvInitialStock=stock;
+    if(!Number.isFinite(Number(p.ipvEntries))) p.ipvEntries=0;
+    if(!Number.isFinite(Number(p.ipvSales))) p.ipvSales=0;
+    if(!Number.isFinite(Number(p.ipvOtherExits))) p.ipvOtherExits=0;
+  });
+  saveData("italy_products",products);
+}
+ensureIPVData();
 
 function saveData(key,value){localStorage.setItem(key,JSON.stringify(value))}
 function loadData(key,fallback){try{const d=localStorage.getItem(key);return d===null?fallback:JSON.parse(d)}catch(e){return fallback}}
@@ -254,7 +277,7 @@ function completeSale(){
 if(!cart.length)return;
 for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert("No hay suficiente inventario.");return}}
 const items=cart.map(i=>{const p=getProduct(i.productId);return{productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:Number(p.cost)||0,subtotal:Number(p.price)*i.quantity}});
-cart.forEach(i=>{const p=getProduct(i.productId);ensureIPVData();p.stock-=i.quantity;p.ipvSales+=i.quantity;});
+cart.forEach(i=>{const p=getProduct(i.productId);p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;});
 const total=items.reduce((s,i)=>s+i.subtotal,0);
 const costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
 const sale={id:generateId(),date:new Date().toISOString(),payment:document.getElementById("paymentMethod").value,items,total,costTotal,profit:total-costTotal};
@@ -266,38 +289,109 @@ document.getElementById("successModal").classList.add("show")
 }
 function closeSuccessModal(){document.getElementById("successModal").classList.remove("show")}
 
-function ensureIPVData(){
-products.forEach(p=>{
-p.ipvInitialStock=Number.isFinite(Number(p.ipvInitialStock))?Math.max(0,Math.floor(Number(p.ipvInitialStock))):Math.max(0,Math.floor(Number(p.stock)||0));
-p.ipvEntries=Number.isFinite(Number(p.ipvEntries))?Math.max(0,Math.floor(Number(p.ipvEntries))):0;
-p.ipvSales=Number.isFinite(Number(p.ipvSales))?Math.max(0,Math.floor(Number(p.ipvSales))):0;
-p.ipvOtherExits=Number.isFinite(Number(p.ipvOtherExits))?Math.max(0,Math.floor(Number(p.ipvOtherExits))):0;
-p.stock=Math.max(0,Math.floor(Number(p.stock)||0));
-});
-}
-ensureIPVData();
-
 function renderInventory(){
-ensureIPVData();const c=document.getElementById("ipvInventoryBody"),f=document.getElementById("ipvInventoryFoot");
-let grand=0,totalInitial=0,totalEntries=0,totalSales=0,totalOther=0,totalStock=0;
-if(!products.length){c.innerHTML='<tr><td colspan="9" class="empty">No hay productos.</td></tr>';f.innerHTML='';document.getElementById("ipvGrandTotal").textContent=money(0);return}
-c.innerHTML=products.map(p=>{
-const initial=Number(p.ipvInitialStock)||0,entries=Number(p.ipvEntries)||0,sold=Number(p.ipvSales)||0,other=Number(p.ipvOtherExits)||0,stock=Number(p.stock)||0,price=Number(p.price)||0,amount=stock*price;
-grand+=amount;totalInitial+=initial;totalEntries+=entries;totalSales+=sold;totalOther+=other;totalStock+=stock;
-return `<tr><td><strong>${p.icon||"🛒"} ${esc(p.name)}</strong></td><td>${esc(p.unit||"unidad")}</td><td>${initial}</td><td>${entries}</td><td>${sold}</td><td>${other}</td><td><strong>${stock}</strong></td><td>${money(price)}</td><td><strong>${money(amount)}</strong></td></tr>`;
-}).join("");
-f.innerHTML=`<tr class="ipv-total-row"><td colspan="2">TOTALES</td><td>${totalInitial}</td><td>${totalEntries}</td><td>${totalSales}</td><td>${totalOther}</td><td>${totalStock}</td><td>—</td><td>${money(grand)}</td></tr>`;
-document.getElementById("ipvGrandTotal").textContent=money(grand);
+ensureIPVData();
+const c=document.getElementById("inventoryContainer");
+if(!products.length){
+  c.innerHTML='<div class="empty">No hay productos.</div>';
+  document.getElementById("ipvGrandTotal").textContent=money(0);
+  return;
 }
-function fillIPVSelect(id){document.getElementById(id).innerHTML=products.map(p=>`<option value="${p.id}">${esc(p.name)} — existencia: ${Number(p.stock)||0}</option>`).join("")}
-function openIPVEntryModal(){if(!products.length){alert("Primero agrega un producto.");return}fillIPVSelect("ipvEntryProduct");document.getElementById("ipvEntryQty").value="";document.getElementById("ipvEntryModal").classList.add("show")}
-function closeIPVEntryModal(){document.getElementById("ipvEntryModal").classList.remove("show")}
-function saveIPVEntry(){const p=getProduct(document.getElementById("ipvEntryProduct").value),q=Math.floor(Number(document.getElementById("ipvEntryQty").value));if(!p||!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}ensureIPVData();p.stock+=q;p.ipvEntries+=q;saveData("italy_products",products);closeIPVEntryModal();renderInventory();renderSaleProducts();renderProductsAdmin()}
-function openIPVExitModal(){if(!products.length){alert("Primero agrega un producto.");return}fillIPVSelect("ipvExitProduct");document.getElementById("ipvExitQty").value="";document.getElementById("ipvExitModal").classList.add("show")}
-function closeIPVExitModal(){document.getElementById("ipvExitModal").classList.remove("show")}
-function saveIPVExit(){const p=getProduct(document.getElementById("ipvExitProduct").value),q=Math.floor(Number(document.getElementById("ipvExitQty").value));if(!p||!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}if(q>Number(p.stock)){alert("La salida no puede ser mayor que la existencia.");return}ensureIPVData();p.stock-=q;p.ipvOtherExits+=q;saveData("italy_products",products);closeIPVExitModal();renderInventory();renderSaleProducts();renderProductsAdmin()}
-function changeStock(id,n){const p=getProduct(id);if(!p)return;ensureIPVData();let s=Number(p.stock)+n;if(s<0){alert("El inventario no puede ser negativo.");return}p.stock=s;if(n>0)p.ipvEntries+=n;else if(n<0)p.ipvOtherExits+=Math.abs(n);saveData("italy_products",products);renderInventory();renderSaleProducts();renderProductsAdmin()}
-function setStock(id){const p=getProduct(id);if(!p)return;ensureIPVData();const v=prompt("Nueva cantidad para "+p.name,p.stock);if(v===null)return;const s=Number(v);if(!Number.isFinite(s)||s<0){alert("Cantidad no válida.");return}const old=Number(p.stock)||0,next=Math.floor(s),diff=next-old;p.stock=next;if(diff>0)p.ipvEntries+=diff;else if(diff<0)p.ipvOtherExits+=Math.abs(diff);saveData("italy_products",products);renderInventory();renderSaleProducts();renderProductsAdmin()}
+let grandTotal=0;
+const rows=products.map(p=>{
+  const initial=Number(p.ipvInitialStock)||0;
+  const entries=Number(p.ipvEntries)||0;
+  const sold=Number(p.ipvSales)||0;
+  const exits=Number(p.ipvOtherExits)||0;
+  const stock=Number(p.stock)||0;
+  const price=Number(p.price)||0;
+  const amount=stock*price;
+  grandTotal+=amount;
+  return `<tr>
+    <td>${p.icon||"🛒"} ${esc(p.name)}</td>
+    <td>${esc(p.unit||"unidad")}</td>
+    <td>${initial}</td>
+    <td>${entries}</td>
+    <td>${sold}</td>
+    <td>${exits}</td>
+    <td><strong>${stock}</strong></td>
+    <td>${money(price)}</td>
+    <td class="ipv-amount">${money(amount)}</td>
+  </tr>`;
+}).join("");
+c.innerHTML=`<div class="ipv-table-wrap"><table class="ipv-table">
+<thead><tr>
+<th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th>
+</tr></thead><tbody>${rows}</tbody></table></div>`;
+document.getElementById("ipvGrandTotal").textContent=money(grandTotal);
+}
+
+function openIPVMovementModal(type){
+  if(!products.length){alert("No hay productos registrados.");return}
+  ipvMovementType=type;
+  const title=document.getElementById("ipvMovementTitle");
+  title.textContent=type==="entry"?"➕ Registrar entrada":"➖ Registrar otra salida";
+  const select=document.getElementById("ipvMovementProduct");
+  select.innerHTML=products.map(p=>`<option value="${p.id}">${esc(p.name)} — existencia: ${Number(p.stock)||0}</option>`).join("");
+  document.getElementById("ipvMovementQuantity").value="";
+  updateIPVMovementHint();
+  document.getElementById("ipvMovementModal").classList.add("show");
+}
+function updateIPVMovementHint(){
+  const p=getProduct(document.getElementById("ipvMovementProduct").value);
+  if(!p)return;
+  document.getElementById("ipvMovementHint").textContent=
+    `Existencia actual: ${Number(p.stock)||0} ${p.unit||"unidad"} · Precio de venta: ${money(p.price)}`;
+}
+function closeIPVMovementModal(){document.getElementById("ipvMovementModal").classList.remove("show")}
+document.addEventListener("change",e=>{
+  if(e.target && e.target.id==="ipvMovementProduct") updateIPVMovementHint();
+});
+function saveIPVMovement(){
+  const p=getProduct(document.getElementById("ipvMovementProduct").value);
+  const q=Math.floor(Number(document.getElementById("ipvMovementQuantity").value));
+  if(!p){alert("Selecciona un producto.");return}
+  if(!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}
+  if(ipvMovementType==="exit" && q>Number(p.stock||0)){
+    alert("La salida no puede ser mayor que la existencia actual.");return
+  }
+  if(ipvMovementType==="entry"){
+    p.stock=(Number(p.stock)||0)+q;
+    p.ipvEntries=(Number(p.ipvEntries)||0)+q;
+  }else{
+    p.stock=(Number(p.stock)||0)-q;
+    p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+q;
+  }
+  saveData("italy_products",products);
+  closeIPVMovementModal();
+  renderInventory();
+  renderSaleProducts();
+}
+
+function changeStock(id,n){
+  const p=getProduct(id);if(!p)return;
+  let s=(Number(p.stock)||0)+n;
+  if(s<0){alert("El inventario no puede ser negativo.");return}
+  p.stock=s;
+  if(n>0)p.ipvEntries=(Number(p.ipvEntries)||0)+n;
+  if(n<0)p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(n);
+  saveData("italy_products",products);renderInventory();renderSaleProducts()
+}
+function setStock(id){
+  const p=getProduct(id);if(!p)return;
+  const old=Number(p.stock)||0;
+  const v=prompt("Nueva cantidad para "+p.name,p.stock);
+  if(v===null)return;
+  const s=Number(v);
+  if(!Number.isFinite(s)||s<0){alert("Cantidad no válida.");return}
+  const ns=Math.floor(s);
+  const diff=ns-old;
+  p.stock=ns;
+  if(diff>0)p.ipvEntries=(Number(p.ipvEntries)||0)+diff;
+  if(diff<0)p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(diff);
+  saveData("italy_products",products);renderInventory();renderSaleProducts()
+}
+
 function renderSales(){
 const today=new Date().toLocaleDateString();
 const ts=sales.filter(s=>new Date(s.date).toLocaleDateString()===today);
@@ -335,7 +429,7 @@ if(!name){alert("Escribe el nombre del producto.");return}
 if(!Number.isFinite(price)||price<0){alert("Introduce un precio válido.");return}
 if(!Number.isFinite(cost)||cost<0){alert("Introduce un costo válido o déjalo vacío.");return}
 if(!Number.isFinite(stock)||stock<0){alert("Introduce una cantidad válida.");return}
-if(id){const p=getProduct(id);ensureIPVData();p.name=name;p.price=price;p.cost=cost;p.stock=Math.floor(stock);p.unit=unit}
+if(id){const p=getProduct(id);p.name=name;p.price=price;p.cost=cost;p.stock=Math.floor(stock);p.unit=unit}
 else products.push({id:generateId(),name,price,cost,stock:Math.floor(stock),unit,icon:"🛒",ipvInitialStock:Math.floor(stock),ipvEntries:0,ipvSales:0,ipvOtherExits:0});
 saveData("italy_products",products);closeProductModal();renderProductsAdmin();renderSaleProducts();renderInventory()
 }
@@ -348,5 +442,6 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 
 renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("./service-worker.js").then(r=>console.log("Service Worker registrado:",r.scope)).catch(e=>console.error("Error registrando Service Worker:",e));});}</script></body>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(e=>console.error(e)));}</script>
+</body>
 </html>
