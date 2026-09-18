@@ -1,4 +1,4 @@
-const CACHE_NAME = "tienda-italy-mau-v2";
+const CACHE_NAME = "tienda-italy-mau-v3";
 
 const APP_FILES = [
   "./",
