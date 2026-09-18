@@ -58,6 +58,13 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 .ipv-amount{font-weight:bold;color:#16803c}
 .ipv-movement{display:flex;gap:8px;align-items:center;margin-top:12px}
 .ipv-movement button{flex:1}
+ .ipv-day-tools{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.ipv-history-item{background:#fff;border:1px solid #e7e7e7;border-radius:14px;padding:14px;margin-top:10px}
+.ipv-history-head{display:flex;justify-content:space-between;gap:10px;align-items:center;font-weight:bold}
+.ipv-history-total{font-size:19px;color:#16803c}
+.ipv-history-details{color:#666;font-size:12px;margin-top:6px;line-height:1.5}
+.ipv-date-input{margin-bottom:0}
+.capital-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:15px}.capital-card{background:#fff;border-radius:15px;padding:15px;box-shadow:0 2px 7px #0000000d}.capital-label{color:#777;font-size:11px;text-transform:uppercase}.capital-value{margin-top:6px;font-size:21px;font-weight:bold}.capital-main{background:#111;color:#fff}.capital-main .capital-label{color:#ccc}.capital-main .capital-value{font-size:25px}.capital-profit{color:#16803c}.capital-setting{display:flex;gap:8px;align-items:end}.capital-setting>div{flex:1}.capital-setting button{width:auto;margin:0;white-space:nowrap}@media(max-width:599px){.capital-grid{grid-template-columns:1fr}.capital-setting{display:block}.capital-setting button{width:100%;margin-top:8px}}
 @media(max-width:599px){
   .ipv-table{font-size:11px}
 }
@@ -99,6 +106,16 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
   <div class="hint">El IPV muestra la existencia de cada producto y su importe al precio de venta. Las ventas, entradas y otras salidas actualizan automáticamente las existencias.</div>
   <div id="inventoryContainer"></div>
 </div>
+<div class="card">
+  <h3 style="margin-top:0">📅 IPV por día</h3>
+  <label>Selecciona la fecha</label>
+  <input id="ipvReportDate" class="ipv-date-input" type="date">
+  <div class="ipv-day-tools">
+    <button class="primary" style="margin-top:0" onclick="generateDailyIPV()">📋 Generar IPV del día</button>
+    <button class="secondary" style="padding:15px" onclick="showTodayIPV()">📅 Ver hoy</button>
+  </div>
+  <div id="dailyIPVContainer" style="margin-top:14px"></div>
+</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
   <button class="primary" style="margin-top:0" onclick="openIPVMovementModal('entry')">➕ Registrar entrada</button>
   <button class="secondary" style="padding:15px" onclick="openIPVMovementModal('exit')">➖ Registrar otra salida</button>
@@ -111,6 +128,20 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <div class="stats-grid">
 <div class="stat"><div class="stat-label">VENTAS DE HOY</div><div id="todaySalesCount" class="stat-value">0</div></div>
 <div class="stat"><div class="stat-label">TOTAL DE HOY</div><div id="todaySalesTotal" class="stat-value">$0.00</div></div>
+</div>
+<div class="card">
+<h3 style="margin-top:0">💰 Capital y ganancias</h3>
+<div class="capital-grid">
+<div class="capital-card"><div class="capital-label">Capital inicial</div><div id="capitalInitialDisplay" class="capital-value">$0.00</div></div>
+<div class="capital-card"><div class="capital-label">Ganancia acumulada</div><div id="capitalProfitDisplay" class="capital-value capital-profit">$0.00</div></div>
+<div class="capital-card capital-main"><div class="capital-label">Capital actual</div><div id="capitalCurrentDisplay" class="capital-value">$0.00</div></div>
+</div>
+<div class="hint">El capital actual se calcula como <strong>capital inicial + ganancia acumulada</strong>. La ganancia de cada venta se calcula con el precio de venta menos el costo registrado del producto.</div>
+<div class="capital-setting">
+<div><label>Establecer capital inicial</label><input id="capitalInitialInput" type="number" min="0" step="0.01" placeholder="0.00"></div>
+<button class="primary" onclick="saveInitialCapital()">💾 Guardar capital</button>
+</div>
+<div id="capitalTodayProfit" class="hint" style="margin-top:12px;margin-bottom:0"></div>
 </div>
 <div id="salesHistory"></div>
 </section>
@@ -194,6 +225,9 @@ let products=loadData("italy_products",null);
 let sales=loadData("italy_sales",[]);
 let cart=[];
 let ipvMovementType="entry";
+let ipvDailyReports=loadData("italy_ipv_daily",[]);
+let ipvMovements=loadData("italy_ipv_movements",[]);
+let capitalInitial=Number(loadData("italy_capital_initial",0))||0;
 
 if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
 
@@ -277,12 +311,12 @@ function completeSale(){
 if(!cart.length)return;
 for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert("No hay suficiente inventario.");return}}
 const items=cart.map(i=>{const p=getProduct(i.productId);return{productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:Number(p.cost)||0,subtotal:Number(p.price)*i.quantity}});
-cart.forEach(i=>{const p=getProduct(i.productId);p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;});
+cart.forEach(i=>{const p=getProduct(i.productId);p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"sale",productId:p.id,quantity:i.quantity});});
 const total=items.reduce((s,i)=>s+i.subtotal,0);
 const costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
 const sale={id:generateId(),date:new Date().toISOString(),payment:document.getElementById("paymentMethod").value,items,total,costTotal,profit:total-costTotal};
 sales.unshift(sale);
-saveData("italy_products",products);saveData("italy_sales",sales);cart=[];
+saveData("italy_products",products);saveData("italy_sales",sales);saveData("italy_ipv_movements",ipvMovements);cart=[];
 closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
 document.getElementById("successDetails").innerHTML=`Total: <strong>${money(total)}</strong><br>Pago con: ${sale.payment}`;
 document.getElementById("successModal").classList.add("show")
@@ -358,14 +392,78 @@ function saveIPVMovement(){
   if(ipvMovementType==="entry"){
     p.stock=(Number(p.stock)||0)+q;
     p.ipvEntries=(Number(p.ipvEntries)||0)+q;
+    ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"entry",productId:p.id,quantity:q});
   }else{
     p.stock=(Number(p.stock)||0)-q;
     p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+q;
+    ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"exit",productId:p.id,quantity:q});
   }
   saveData("italy_products",products);
+  saveData("italy_ipv_movements",ipvMovements);
   closeIPVMovementModal();
   renderInventory();
   renderSaleProducts();
+}
+
+function localDateKey(date=new Date()){
+  const d=new Date(date);
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function formatDateKey(key){
+  const parts=key.split("-");
+  return parts.length===3?`${parts[2]}/${parts[1]}/${parts[0]}`:key;
+}
+function dailyDataFor(dateKey){
+  const salesDay=sales.filter(s=>localDateKey(s.date)===dateKey);
+  const movDay=ipvMovements.filter(m=>localDateKey(m.date)===dateKey);
+  const rows=products.map(p=>{
+    const salesQty=salesDay.reduce((sum,s)=>sum+s.items.filter(i=>i.productId===p.id).reduce((a,i)=>a+Number(i.quantity||0),0),0);
+    const entries=movDay.filter(m=>m.productId===p.id&&m.type==="entry").reduce((a,m)=>a+Number(m.quantity||0),0);
+    const exits=movDay.filter(m=>m.productId===p.id&&m.type==="exit").reduce((a,m)=>a+Number(m.quantity||0),0);
+    const existence=Number(p.stock)||0;
+    const initial=existence-entries+salesQty+exits;
+    const price=Number(p.price)||0;
+    return {productId:p.id,name:p.name,unit:p.unit||"unidad",initial,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
+  });
+  return {date:dateKey,rows,total:rows.reduce((a,r)=>a+r.amount,0),salesCount:salesDay.length,salesTotal:salesDay.reduce((a,s)=>a+Number(s.total||0),0),entries:rows.reduce((a,r)=>a+r.entries,0),otherExits:rows.reduce((a,r)=>a+r.otherExits,0)};
+}
+function generateDailyIPV(){
+  const input=document.getElementById("ipvReportDate");
+  const dateKey=input.value||localDateKey();
+  const report=dailyDataFor(dateKey);
+  const idx=ipvDailyReports.findIndex(r=>r.date===dateKey);
+  const saved={...report,generatedAt:new Date().toISOString()};
+  if(idx>=0)ipvDailyReports[idx]=saved;else ipvDailyReports.unshift(saved);
+  ipvDailyReports.sort((a,b)=>b.date.localeCompare(a.date));
+  saveData("italy_ipv_daily",ipvDailyReports);
+  renderDailyIPV(saved);
+}
+function renderDailyIPV(report){
+  const c=document.getElementById("dailyIPVContainer");
+  if(!report){c.innerHTML='<div class="empty">Selecciona una fecha y pulsa “Generar IPV del día”.</div>';return}
+  const rows=report.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${r.initial}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.otherExits}</td><td><strong>${r.existence}</strong></td><td>${money(r.price)}</td><td class="ipv-amount">${money(r.amount)}</td></tr>`).join("");
+  c.innerHTML=`<div class="hint"><strong>IPV del ${formatDateKey(report.date)}</strong><br>Ventas: ${report.salesCount} · Total vendido: ${money(report.salesTotal)} · Entradas: ${report.entries} · Otras salidas: ${report.otherExits}</div><div class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead><tbody>${rows}</tbody></table></div><div class="card ipv-total-card" style="margin-top:10px;margin-bottom:0"><div class="ipv-total-label">VALOR DEL INVENTARIO AL CIERRE DEL DÍA</div><div class="ipv-grand-total">${money(report.total)}</div></div>`;
+}
+function showTodayIPV(){
+  const today=localDateKey();
+  document.getElementById("ipvReportDate").value=today;
+  const saved=ipvDailyReports.find(r=>r.date===today);
+  if(saved)renderDailyIPV(saved);else generateDailyIPV();
+}
+function renderIPVDailyHistory(){
+  const c=document.getElementById("dailyIPVContainer");
+  if(!c)return;
+  const history=ipvDailyReports.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(!history.length){c.innerHTML='<div class="empty">Todavía no hay cierres IPV guardados.</div>';return}
+  c.innerHTML='<h4 style="margin:14px 0 8px">📚 Historial de IPV</h4>'+history.map(r=>`<div class="ipv-history-item"><div class="ipv-history-head"><span>📅 ${formatDateKey(r.date)}</span><span class="ipv-history-total">${money(r.total)}</span></div><div class="ipv-history-details">Ventas: ${r.salesCount} · Vendido: ${money(r.salesTotal)} · Entradas: ${r.entries} · Otras salidas: ${r.otherExits}</div><button class="secondary" style="margin-top:10px;width:100%" onclick="viewSavedIPV('${r.date}')">Ver IPV de este día</button></div>`).join("");
+}
+function viewSavedIPV(dateKey){
+  const r=ipvDailyReports.find(x=>x.date===dateKey);
+  document.getElementById("ipvReportDate").value=dateKey;
+  renderDailyIPV(r);
 }
 
 function changeStock(id,n){
@@ -373,9 +471,9 @@ function changeStock(id,n){
   let s=(Number(p.stock)||0)+n;
   if(s<0){alert("El inventario no puede ser negativo.");return}
   p.stock=s;
-  if(n>0)p.ipvEntries=(Number(p.ipvEntries)||0)+n;
-  if(n<0)p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(n);
-  saveData("italy_products",products);renderInventory();renderSaleProducts()
+  if(n>0){p.ipvEntries=(Number(p.ipvEntries)||0)+n;ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"entry",productId:p.id,quantity:n});}
+  if(n<0){p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(n);ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"exit",productId:p.id,quantity:Math.abs(n)});}
+  saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);renderInventory();renderSaleProducts()
 }
 function setStock(id){
   const p=getProduct(id);if(!p)return;
@@ -387,9 +485,37 @@ function setStock(id){
   const ns=Math.floor(s);
   const diff=ns-old;
   p.stock=ns;
-  if(diff>0)p.ipvEntries=(Number(p.ipvEntries)||0)+diff;
-  if(diff<0)p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(diff);
-  saveData("italy_products",products);renderInventory();renderSaleProducts()
+  if(diff>0){p.ipvEntries=(Number(p.ipvEntries)||0)+diff;ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"entry",productId:p.id,quantity:diff});}
+  if(diff<0){p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(diff);ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"exit",productId:p.id,quantity:Math.abs(diff)});}
+  saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);renderInventory();renderSaleProducts()
+}
+
+function getAccumulatedProfit(){
+  return sales.reduce((sum,s)=>sum+Number(s.profit||0),0);
+}
+function getTodayProfit(){
+  const today=localDateKey();
+  return sales.filter(s=>localDateKey(s.date)===today).reduce((sum,s)=>sum+Number(s.profit||0),0);
+}
+function saveInitialCapital(){
+  const v=Number(document.getElementById("capitalInitialInput").value);
+  if(!Number.isFinite(v)||v<0){alert("Introduce un capital inicial válido.");return}
+  capitalInitial=v;
+  saveData("italy_capital_initial",capitalInitial);
+  renderCapital();
+  alert("Capital inicial guardado correctamente.");
+}
+function renderCapital(){
+  const profit=getAccumulatedProfit();
+  const current=capitalInitial+profit;
+  const todayProfit=getTodayProfit();
+  const initialEl=document.getElementById("capitalInitialDisplay");
+  if(!initialEl)return;
+  initialEl.textContent=money(capitalInitial);
+  document.getElementById("capitalProfitDisplay").textContent=money(profit);
+  document.getElementById("capitalCurrentDisplay").textContent=money(current);
+  document.getElementById("capitalInitialInput").value=capitalInitial||"";
+  document.getElementById("capitalTodayProfit").innerHTML=`Ganancia de hoy: <strong>${money(todayProfit)}</strong>`;
 }
 
 function renderSales(){
@@ -397,6 +523,7 @@ const today=new Date().toLocaleDateString();
 const ts=sales.filter(s=>new Date(s.date).toLocaleDateString()===today);
 document.getElementById("todaySalesCount").textContent=ts.length;
 document.getElementById("todaySalesTotal").textContent=money(ts.reduce((a,s)=>a+Number(s.total),0));
+renderCapital();
 const c=document.getElementById("salesHistory");
 if(!sales.length){c.innerHTML='<div class="card empty">Todavía no hay ventas registradas.</div>';return}
 c.innerHTML=sales.map(s=>{const d=new Date(s.date);return `<div class="sale-item"><div class="sale-top"><div><div class="sale-title">Venta</div><div class="sale-date">${d.toLocaleDateString()} ${d.toLocaleTimeString()}</div></div><div class="sale-total">${money(s.total)}</div></div><div class="sale-products">${s.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join("<br>")}</div><div style="margin-top:8px;color:#777;font-size:12px">Pago: ${esc(s.payment)}</div></div>`}).join("")
@@ -440,8 +567,8 @@ products=products.filter(x=>x.id!==id);cart=cart.filter(x=>x.productId!==id);
 saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();renderInventory();renderCart()
 }
 
-renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();
+document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=3").catch(e=>console.error(e)));}</script>
 </body>
 </html>
