@@ -72,6 +72,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 @media(min-width:600px){.products-grid{grid-template-columns:repeat(3,1fr)}}
 
 .auth-overlay{position:fixed;inset:0;background:#111;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}.auth-box{width:100%;max-width:420px;background:#fff;border-radius:20px;padding:24px;box-shadow:0 10px 40px #0008}.auth-logo{font-size:46px;text-align:center}.auth-box h2{margin:8px 0;text-align:center}.auth-box>p{text-align:center;color:#777;font-size:13px}.auth-status{display:none;background:#fff4e5;color:#9a5a00;border-radius:10px;padding:10px;font-size:12px;margin:10px 0}.user-bar{position:fixed;right:10px;top:10px;z-index:40;background:#fff;border-radius:20px;padding:6px 8px 6px 10px;box-shadow:0 2px 10px #0002;font-size:11px;display:flex;gap:6px;align-items:center}.user-bar button{border:0;background:#111;color:#fff;border-radius:10px;padding:5px 8px;font-size:11px}.cloud-badge{display:inline-block;background:#16803c;color:#fff;border-radius:20px;padding:4px 8px;font-size:10px;margin-left:6px}
+.offline-status{position:fixed;left:10px;top:10px;z-index:45;background:#16803c;color:#fff;border-radius:20px;padding:6px 10px;font-size:11px;font-weight:bold;box-shadow:0 2px 10px #0002}.offline-status.offline{background:#c0392b}.offline-status.pending{background:#9a5a00}
 </style>
 </head>
 <body>
@@ -93,6 +94,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <div id="userBar" class="user-bar" style="display:none">
   <span id="userIdentity">👤</span><span id="userRole"></span><button onclick="cloudLogout()">Salir</button>
 </div>
+<div id="offlineStatus" class="offline-status" style="display:none">☁️ Conectado</div>
 
 <header>
 <h1>🏪 Tienda Italy Mau.dim</h1>
@@ -251,6 +253,7 @@ const DEFAULT_PRODUCTS=[
 
 let products=loadData("italy_products",null);
 let sales=loadData("italy_sales",[]);
+let pendingSales=loadData("italy_pending_sales",[]);
 let cart=[];
 let ipvMovementType="entry";
 let ipvDailyReports=loadData("italy_ipv_daily",[]);
@@ -554,7 +557,7 @@ document.getElementById("todaySalesTotal").textContent=money(ts.reduce((a,s)=>a+
 renderCapital();
 const c=document.getElementById("salesHistory");
 if(!sales.length){c.innerHTML='<div class="card empty">Todavía no hay ventas registradas.</div>';return}
-c.innerHTML=sales.map(s=>{const d=new Date(s.date);return `<div class="sale-item"><div class="sale-top"><div><div class="sale-title">Venta</div><div class="sale-date">${d.toLocaleDateString()} ${d.toLocaleTimeString()}</div></div><div class="sale-total">${money(s.total)}</div></div><div class="sale-products">${s.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join("<br>")}</div><div style="margin-top:8px;color:#777;font-size:12px">Pago: ${esc(s.payment)}</div></div>`}).join("")
+c.innerHTML=sales.map(s=>{const d=new Date(s.date);const status=s.offline&&!s.synced?`<div style="margin-top:7px;color:#9a5a00;font-size:12px;font-weight:bold">📴 Pendiente de sincronización</div>`:(s.synced?`<div style="margin-top:7px;color:#16803c;font-size:12px">☁️ Sincronizada</div>`:"");return `<div class="sale-item"><div class="sale-top"><div><div class="sale-title">Venta</div><div class="sale-date">${d.toLocaleDateString()} ${d.toLocaleTimeString()}</div></div><div class="sale-total">${money(s.total)}</div></div><div class="sale-products">${s.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join("<br>")}</div><div style="margin-top:8px;color:#777;font-size:12px">Pago: ${esc(s.payment)}</div>${status}${s.syncError?`<div style="margin-top:5px;color:#c0392b;font-size:11px">Error: ${esc(s.syncError)}</div>`:""}</div>`}).join("");updateOfflineStatus();
 }
 
 function renderProductsAdmin(){
@@ -597,7 +600,7 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=3").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4").catch(e=>console.error(e)));}</script>
 <script>
 /* ===== MODO MULTIUSUARIO / SUPABASE =====
    1) Pega aquí el Project URL y la Publishable/anon key de TU proyecto Supabase.
@@ -606,6 +609,57 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 const SUPABASE_URL="https://nnqthpdjbdqrdbodzwzf.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_nEMRdAA1nw7yEyqzz7aKzA_J1WTDVMC"
 let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null;
+
+/* ===== OFFLINE REAL / COLA DE VENTAS ===== */
+function savePendingSales(){saveData("italy_pending_sales",pendingSales);}
+function pendingSalesCount(){return Array.isArray(pendingSales)?pendingSales.length:0;}
+function isNetworkFailure(error){
+  if(!error)return false;
+  const msg=String(error.message||error||"").toLowerCase();
+  return !navigator.onLine||msg.includes("failed to fetch")||msg.includes("networkerror")||msg.includes("network request failed")||msg.includes("fetch failed")||msg.includes("load failed")||msg.includes("timeout");
+}
+function updateOfflineStatus(){
+  const el=document.getElementById("offlineStatus");if(!el)return;
+  const n=pendingSalesCount();
+  if(!navigator.onLine){el.className="offline-status offline";el.textContent=n?`📴 Sin Internet · ${n} venta${n===1?"":"s"} pendiente${n===1?"":"s"}`:"📴 Sin Internet · Modo offline";}
+  else if(n){el.className="offline-status pending";el.textContent=`🔄 Sincronizando ${n} venta${n===1?"":"s"}...`;}
+  else{el.className="offline-status";el.textContent="☁️ Conectado · Sincronizado";}
+  el.style.display="block";
+}
+function saveLocalSale(sale){sales.unshift(sale);saveData("italy_products",products);saveData("italy_sales",sales);}
+function queueOfflineSale(sale,payment){
+  pendingSales.push({localId:sale.id,createdAt:sale.date,payment,items:sale.items.map(i=>({productId:i.productId,quantity:i.quantity}))});
+  savePendingSales();saveLocalSale(sale);
+}
+async function syncPendingSales(){
+  if(!cloudUser||!cloud||!navigator.onLine||!pendingSales.length){updateOfflineStatus();return;}
+  updateOfflineStatus();
+  const queue=pendingSales.slice();
+  for(const pending of queue){
+    if(!navigator.onLine)break;
+    const {data:saleId,error}=await cloud.rpc("register_sale",{p_payment:pending.payment,p_items:pending.items});
+    if(error){
+      if(isNetworkFailure(error)){console.warn("La sincronización se detuvo por falta de conexión.",error);break;}
+      const local=sales.find(s=>s.id===pending.localId);if(local)local.syncError=error.message||"Error de sincronización";
+      saveData("italy_sales",sales);console.error("Venta pendiente no sincronizada:",error);break;
+    }
+    pendingSales=pendingSales.filter(x=>x.localId!==pending.localId);savePendingSales();
+    const local=sales.find(s=>s.id===pending.localId);
+    if(local){local.synced=true;local.serverId=String(saleId);delete local.syncError;}
+    saveData("italy_sales",sales);
+  }
+  updateOfflineStatus();
+  if(pendingSales.length===0)await cloudLoadAll();
+  else{renderSales();renderInventory();renderSaleProducts();}
+}
+function createLocalSaleFromCart(payment){
+  const items=cart.map(i=>{const p=getProduct(i.productId);return {productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:Number(p.cost)||0,subtotal:Number(p.price)*i.quantity};});
+  const total=items.reduce((s,i)=>s+i.subtotal,0),costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
+  return {id:"offline-"+generateId(),date:new Date().toISOString(),payment,items,total,costTotal,profit:total-costTotal,userId:cloudUser?.id||null,offline:true,synced:false};
+}
+function applyLocalSale(sale){
+  for(const i of sale.items){const p=getProduct(i.productId);if(!p)continue;p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;ipvMovements.unshift({id:generateId(),date:sale.date,type:"sale",productId:p.id,quantity:i.quantity,userId:cloudUser?.id||null,offline:true});}
+}
 
 function cloudMessage(msg){
   const el=document.getElementById("authStatus"); if(!el)return;
@@ -636,31 +690,39 @@ async function cloudLogin(){
 async function cloudLogout(){if(cloud) await cloud.auth.signOut(); cloudUser=null;cloudProfile=null;showLogin()}
 
 async function cloudLoadAll(){
-  if(!cloudUser)return;
-  const [pr,sr,mr,cr] = await Promise.all([
-    cloud.from("products").select("*").order("created_at",{ascending:true}),
-    cloud.from("sales").select("*,sale_items(*)").order("created_at",{ascending:false}),
-    cloud.from("inventory_movements").select("*").order("created_at",{ascending:false}),
-    cloud.from("shop_settings").select("*").eq("id",1).maybeSingle()
-  ]);
-  if(pr.error){console.error(pr.error);cloudMessage(pr.error.message);return}
-  if(sr.error){console.error(sr.error);cloudMessage(sr.error.message);return}
-  products=(pr.data||[]).map(p=>({
-    id:p.id,name:p.name,price:Number(p.price),cost:Number(p.cost),stock:Number(p.stock),unit:p.unit,icon:p.icon,
-    ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0
-  }));
-  sales=(sr.data||[]).map(s=>({
-    id:s.id,date:s.created_at,payment:s.payment,total:Number(s.total),costTotal:Number(s.cost_total),profit:Number(s.profit),
-    userId:s.user_id,items:(s.sale_items||[]).map(i=>({productId:i.product_id,name:i.product_name,quantity:Number(i.quantity),price:Number(i.price),cost:Number(i.cost),subtotal:Number(i.subtotal)}))
-  }));
-  ipvMovements=(mr.data||[]).map(m=>({id:m.id,date:m.created_at,type:m.type,productId:m.product_id,quantity:Number(m.quantity),userId:m.user_id}));
-  capitalInitial=Number(cr.data?.capital_initial)||0;
-  localStorage.setItem("italy_products",JSON.stringify(products));
-  localStorage.setItem("italy_sales",JSON.stringify(sales));
-  localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));
-  localStorage.setItem("italy_capital_initial",JSON.stringify(capitalInitial));
-  ensureIPVData();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
+  if(!cloudUser)return false;
+  try{
+    const [pr,sr,mr,cr]=await Promise.all([
+      cloud.from("products").select("*").order("created_at",{ascending:true}),
+      cloud.from("sales").select("*,sale_items(*)").order("created_at",{ascending:false}),
+      cloud.from("inventory_movements").select("*").order("created_at",{ascending:false}),
+      cloud.from("shop_settings").select("*").eq("id",1).maybeSingle()
+    ]);
+    if(pr.error||sr.error||mr.error||cr.error){const err=pr.error||sr.error||mr.error||cr.error;console.warn("Supabase no está disponible; se conserva la copia local.",err);if(!isNetworkFailure(err))cloudMessage(err.message);updateOfflineStatus();return false;}
+    products=(pr.data||[]).map(p=>({id:p.id,name:p.name,price:Number(p.price),cost:Number(p.cost),stock:Number(p.stock),unit:p.unit,icon:p.icon,ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0}));
+    sales=(sr.data||[]).map(s=>({id:s.id,date:s.created_at,payment:s.payment,total:Number(s.total),costTotal:Number(s.cost_total),profit:Number(s.profit),userId:s.user_id,items:(s.sale_items||[]).map(i=>({productId:i.product_id,name:i.product_name,quantity:Number(i.quantity),price:Number(i.price),cost:Number(i.cost),subtotal:Number(i.subtotal)}))}));
+    ipvMovements=(mr.data||[]).map(m=>({id:m.id,date:m.created_at,type:m.type,productId:m.product_id,quantity:Number(m.quantity),userId:m.user_id}));
+
+    /* Nunca dejamos que una actualización de la nube borre visualmente una
+       venta que todavía está pendiente en el dispositivo. También aplicamos
+       esas ventas pendientes al stock local hasta que Supabase las confirme. */
+    const pendingIds=new Set(pendingSales.map(x=>x.localId));
+    const localSales=loadData("italy_sales",[]);
+    for(const pending of pendingSales){
+      const local=localSales.find(x=>x.id===pending.localId);
+      if(local && !sales.some(x=>x.id===local.id)) sales.push(local);
+      for(const item of pending.items){
+        const p=products.find(x=>x.id===item.productId);
+        if(p){p.stock=Math.max(0,Number(p.stock||0)-Number(item.quantity||0));p.ipvSales=(Number(p.ipvSales)||0)+Number(item.quantity||0);}
+      }
+    }
+    sales.sort((a,b)=>new Date(b.date)-new Date(a.date));
+    capitalInitial=Number(cr.data?.capital_initial)||0;
+    localStorage.setItem("italy_products",JSON.stringify(products));localStorage.setItem("italy_sales",JSON.stringify(sales));localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));localStorage.setItem("italy_capital_initial",JSON.stringify(capitalInitial));
+    ensureIPVData();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();updateOfflineStatus();return true;
+  }catch(e){console.warn("Sin conexión con Supabase; se conserva la copia local.",e);updateOfflineStatus();return false;}
 }
+
 function subscribeCloud(){
   if(!cloud)return;
   cloud.removeAllChannels();
@@ -689,19 +751,39 @@ async function handleCloudSession(session){
   showAppForUser();
   await cloudLoadAll();
   subscribeCloud();
+  updateOfflineStatus();
+  if(navigator.onLine) await syncPendingSales();
 }
+
+window.addEventListener("online",async()=>{updateOfflineStatus();if(cloudUser)await syncPendingSales();else updateOfflineStatus();});
+window.addEventListener("offline",()=>{updateOfflineStatus();});
+setInterval(()=>{if(navigator.onLine&&cloudUser&&pendingSales.length)syncPendingSales();},15000);
 
 /* Venta compartida: usa una función SQL transaccional para evitar que dos usuarios vendan la misma existencia. */
 completeSale=async function(){
   if(!cart.length)return;
   if(!cloudUser){alert("Inicia sesión primero.");return}
-  const items=cart.map(i=>({productId:i.productId,quantity:i.quantity}));
+  for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert("No hay suficiente inventario.");return;}}
   const payment=document.getElementById("paymentMethod").value;
+  const localSale=createLocalSaleFromCart();
+  if(!navigator.onLine){
+    applyLocalSale(localSale);queueOfflineSale(localSale,payment);cart=[];closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
+    document.getElementById("successDetails").innerHTML=`Total: <strong>${money(localSale.total)}</strong><br>Pago con: ${esc(payment)}<br><strong>📴 Guardada en el dispositivo.</strong><br>Se enviará automáticamente cuando vuelva Internet.`;
+    document.getElementById("successModal").classList.add("show");updateOfflineStatus();return;
+  }
+  const items=cart.map(i=>({productId:i.productId,quantity:i.quantity}));
   const {data:saleId,error}=await cloud.rpc("register_sale",{p_payment:payment,p_items:items});
-  if(error){alert("No se pudo registrar la venta: "+error.message);return}
+  if(error){
+    if(isNetworkFailure(error)){
+      applyLocalSale(localSale);queueOfflineSale(localSale,payment);cart=[];closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
+      document.getElementById("successDetails").innerHTML=`Total: <strong>${money(localSale.total)}</strong><br>Pago con: ${esc(payment)}<br><strong>📴 Conexión perdida. Venta guardada localmente.</strong>`;
+      document.getElementById("successModal").classList.add("show");updateOfflineStatus();return;
+    }
+    alert("No se pudo registrar la venta: "+error.message);return;
+  }
   cart=[];closePaymentModal();await cloudLoadAll();
   document.getElementById("successDetails").innerHTML=`Venta registrada.<br><strong>${esc(String(saleId).slice(0,8))}</strong>`;
-  document.getElementById("successModal").classList.add("show");
+  document.getElementById("successModal").classList.add("show");updateOfflineStatus();
 };
 
 saveIPVMovement=async function(){
@@ -805,7 +887,7 @@ async function resetAllStoreData(){
       const {error}=await cloud.rpc("reset_shop_data");
       if(error){
         console.error(error);
-        alert("No se pudo reiniciar la tienda en Supabase.\n\nAsegúrate de haber creado la función SQL "reset_shop_data" y de tener los permisos correspondientes.");
+        alert("No se pudo reiniciar la tienda en Supabase.\n\nAsegúrate de haber creado la función SQL \"reset_shop_data\" y de tener los permisos correspondientes.");
         return;
       }
 
@@ -869,6 +951,7 @@ async function resetAllStoreData(){
 const _renderProductsAdmin=renderProductsAdmin;
 renderProductsAdmin=function(){_renderProductsAdmin();renderProductsAdminCloudGuard()};
 
+updateOfflineStatus();
 initCloud();
 </script>
 </body>
