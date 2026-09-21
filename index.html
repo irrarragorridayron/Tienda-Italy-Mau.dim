@@ -70,9 +70,29 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 }
 
 @media(min-width:600px){.products-grid{grid-template-columns:repeat(3,1fr)}}
+
+.auth-overlay{position:fixed;inset:0;background:#111;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}.auth-box{width:100%;max-width:420px;background:#fff;border-radius:20px;padding:24px;box-shadow:0 10px 40px #0008}.auth-logo{font-size:46px;text-align:center}.auth-box h2{margin:8px 0;text-align:center}.auth-box>p{text-align:center;color:#777;font-size:13px}.auth-status{display:none;background:#fff4e5;color:#9a5a00;border-radius:10px;padding:10px;font-size:12px;margin:10px 0}.user-bar{position:fixed;right:10px;top:10px;z-index:40;background:#fff;border-radius:20px;padding:6px 8px 6px 10px;box-shadow:0 2px 10px #0002;font-size:11px;display:flex;gap:6px;align-items:center}.user-bar button{border:0;background:#111;color:#fff;border-radius:10px;padding:5px 8px;font-size:11px}.cloud-badge{display:inline-block;background:#16803c;color:#fff;border-radius:20px;padding:4px 8px;font-size:10px;margin-left:6px}
 </style>
 </head>
 <body>
+<div id="authOverlay" class="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">🏪</div>
+    <h2>Acceso a Tienda Italy Mau.dim</h2>
+    <p>Inicia sesión para trabajar con el inventario y las ventas compartidas.</p>
+    <div id="authStatus" class="auth-status"></div>
+    <label>Correo electrónico</label>
+    <input id="authEmail" type="email" autocomplete="username" placeholder="correo@ejemplo.com">
+    <label>Contraseña</label>
+    <input id="authPassword" type="password" autocomplete="current-password" placeholder="Contraseña">
+    <button class="primary" style="margin-top:14px" onclick="cloudLogin()">🔐 Iniciar sesión</button>
+    <button class="secondary" style="width:100%;margin-top:8px" onclick="cloudLogout()">Cerrar sesión</button>
+    <div class="hint" style="margin-top:14px;margin-bottom:0">Las cuentas de los vendedores se crean en Supabase → Authentication → Users. No uses la clave <strong>service_role</strong> en esta aplicación.</div>
+  </div>
+</div>
+<div id="userBar" class="user-bar" style="display:none">
+  <span id="userIdentity">👤</span><span id="userRole"></span><button onclick="cloudLogout()">Salir</button>
+</div>
 
 <header>
 <h1>🏪 Tienda Italy Mau.dim</h1>
@@ -212,6 +232,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const DEFAULT_PRODUCTS=[
 {id:"p1",name:"Aceite",price:0,cost:0,stock:0,unit:"unidad",icon:"🫒"},
@@ -570,5 +591,187 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=3").catch(e=>console.error(e)));}</script>
+<script>
+/* ===== MODO MULTIUSUARIO / SUPABASE =====
+   1) Pega aquí el Project URL y la Publishable/anon key de TU proyecto Supabase.
+   2) Ejecuta tienda_mult_usuario.sql en el SQL Editor.
+*/
+const SUPABASE_URL="https://nnqthpdjbdqrdbodzwzf.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_nEMRdAA1nw7yEyqzz7aKzA_J1WTDVMC"
+let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null;
+
+function cloudMessage(msg){
+  const el=document.getElementById("authStatus"); if(!el)return;
+  el.textContent=msg; el.style.display="block";
+}
+function isCloudConfigured(){
+  return SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("PEGA_AQUI") && SUPABASE_ANON_KEY.length>20 && !SUPABASE_ANON_KEY.includes("PEGA_AQUI");
+}
+function isAdmin(){return cloudProfile && cloudProfile.role==="admin"}
+function showAppForUser(){
+  document.getElementById("authOverlay").style.display="none";
+  const bar=document.getElementById("userBar");bar.style.display="flex";
+  document.getElementById("userIdentity").textContent="👤 "+(cloudProfile?.name||cloudUser?.email||"Usuario");
+  document.getElementById("userRole").textContent=isAdmin()?"Administrador":"Vendedor";
+}
+function showLogin(){
+  document.getElementById("authOverlay").style.display="flex";
+  document.getElementById("userBar").style.display="none";
+}
+async function cloudLogin(){
+  if(!cloudConfigured){cloudMessage("Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY en este archivo.");return}
+  const email=document.getElementById("authEmail").value.trim();
+  const password=document.getElementById("authPassword").value;
+  if(!email||!password){cloudMessage("Escribe correo y contraseña.");return}
+  const {error}=await cloud.auth.signInWithPassword({email,password});
+  if(error) cloudMessage(error.message);
+}
+async function cloudLogout(){if(cloud) await cloud.auth.signOut(); cloudUser=null;cloudProfile=null;showLogin()}
+
+async function cloudLoadAll(){
+  if(!cloudUser)return;
+  const [pr,sr,mr,cr] = await Promise.all([
+    cloud.from("products").select("*").order("created_at",{ascending:true}),
+    cloud.from("sales").select("*,sale_items(*)").order("created_at",{ascending:false}),
+    cloud.from("inventory_movements").select("*").order("created_at",{ascending:false}),
+    cloud.from("shop_settings").select("*").eq("id",1).maybeSingle()
+  ]);
+  if(pr.error){console.error(pr.error);cloudMessage(pr.error.message);return}
+  if(sr.error){console.error(sr.error);cloudMessage(sr.error.message);return}
+  products=(pr.data||[]).map(p=>({
+    id:p.id,name:p.name,price:Number(p.price),cost:Number(p.cost),stock:Number(p.stock),unit:p.unit,icon:p.icon,
+    ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0
+  }));
+  sales=(sr.data||[]).map(s=>({
+    id:s.id,date:s.created_at,payment:s.payment,total:Number(s.total),costTotal:Number(s.cost_total),profit:Number(s.profit),
+    userId:s.user_id,items:(s.sale_items||[]).map(i=>({productId:i.product_id,name:i.product_name,quantity:Number(i.quantity),price:Number(i.price),cost:Number(i.cost),subtotal:Number(i.subtotal)}))
+  }));
+  ipvMovements=(mr.data||[]).map(m=>({id:m.id,date:m.created_at,type:m.type,productId:m.product_id,quantity:Number(m.quantity),userId:m.user_id}));
+  capitalInitial=Number(cr.data?.capital_initial)||0;
+  localStorage.setItem("italy_products",JSON.stringify(products));
+  localStorage.setItem("italy_sales",JSON.stringify(sales));
+  localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));
+  localStorage.setItem("italy_capital_initial",JSON.stringify(capitalInitial));
+  ensureIPVData();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
+}
+function subscribeCloud(){
+  if(!cloud)return;
+  cloud.removeAllChannels();
+  cloud.channel("tienda-compartida")
+    .on("postgres_changes",{event:"*",schema:"public",table:"products"},()=>cloudLoadAll())
+    .on("postgres_changes",{event:"*",schema:"public",table:"sales"},()=>cloudLoadAll())
+    .on("postgres_changes",{event:"*",schema:"public",table:"sale_items"},()=>cloudLoadAll())
+    .on("postgres_changes",{event:"*",schema:"public",table:"inventory_movements"},()=>cloudLoadAll())
+    .on("postgres_changes",{event:"*",schema:"public",table:"shop_settings"},()=>cloudLoadAll())
+    .subscribe();
+}
+
+async function initCloud(){
+  if(!isCloudConfigured){cloudMessage("La aplicación ya está preparada para varios usuarios. Configura las dos claves de Supabase en el archivo index.html.");return}
+  cloudConfigured=true;
+  cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  const {data}=await cloud.auth.getSession();
+  if(data.session){await handleCloudSession(data.session)}else showLogin();
+  cloud.auth.onAuthStateChange(async(_event,session)=>{if(session) await handleCloudSession(session); else {cloudUser=null;cloudProfile=null;showLogin()}});
+}
+async function handleCloudSession(session){
+  cloudUser=session.user;
+  const {data:profile,error}=await cloud.from("profiles").select("*").eq("id",cloudUser.id).maybeSingle();
+  if(error){cloudMessage(error.message);return}
+  cloudProfile=profile||{name:cloudUser.email,role:"vendedor"};
+  showAppForUser();
+  await cloudLoadAll();
+  subscribeCloud();
+}
+
+/* Venta compartida: usa una función SQL transaccional para evitar que dos usuarios vendan la misma existencia. */
+completeSale=async function(){
+  if(!cart.length)return;
+  if(!cloudUser){alert("Inicia sesión primero.");return}
+  const items=cart.map(i=>({productId:i.productId,quantity:i.quantity}));
+  const payment=document.getElementById("paymentMethod").value;
+  const {data:saleId,error}=await cloud.rpc("register_sale",{p_payment:payment,p_items:items});
+  if(error){alert("No se pudo registrar la venta: "+error.message);return}
+  cart=[];closePaymentModal();await cloudLoadAll();
+  document.getElementById("successDetails").innerHTML=`Venta registrada.<br><strong>${esc(String(saleId).slice(0,8))}</strong>`;
+  document.getElementById("successModal").classList.add("show");
+};
+
+saveIPVMovement=async function(){
+  if(!cloudUser){alert("Inicia sesión primero.");return}
+  const p=getProduct(document.getElementById("ipvMovementProduct").value);
+  const q=Math.floor(Number(document.getElementById("ipvMovementQuantity").value));
+  if(!p){alert("Selecciona un producto.");return}
+  if(!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}
+  const {error}=await cloud.rpc("inventory_move",{p_product_id:p.id,p_quantity:q,p_type:ipvMovementType});
+  if(error){alert("No se pudo registrar el movimiento: "+error.message);return}
+  closeIPVMovementModal();await cloudLoadAll();
+};
+
+saveInitialCapital=async function(){
+  if(!isAdmin()){alert("Solo el administrador puede cambiar el capital inicial.");return}
+  const v=Number(document.getElementById("capitalInitialInput").value);
+  if(!Number.isFinite(v)||v<0){alert("Introduce un capital inicial válido.");return}
+  const {error}=await cloud.rpc("set_initial_capital",{p_amount:v});
+  if(error){alert("No se pudo guardar el capital: "+error.message);return}
+  await cloudLoadAll();alert("Capital inicial compartido guardado correctamente.");
+};
+
+saveProduct=async function(){
+  if(!isAdmin()){alert("Solo el administrador puede administrar productos.");return}
+  const id=document.getElementById("editingProductId").value;
+  const name=document.getElementById("productName").value.trim();
+  const price=Number(document.getElementById("productPrice").value);
+  const cv=document.getElementById("productCost").value;const cost=cv===""?0:Number(cv);
+  const stock=Math.floor(Number(document.getElementById("productStock").value));
+  const unit=document.getElementById("productUnit").value;
+  if(!name){alert("Escribe el nombre del producto.");return}
+  if(!Number.isFinite(price)||price<0||!Number.isFinite(cost)||cost<0||!Number.isFinite(stock)||stock<0){alert("Revisa los datos del producto.");return}
+  if(id){
+    const old=getProduct(id);if(!old)return;
+    const {error}=await cloud.from("products").update({name,price,cost,unit,updated_at:new Date().toISOString()}).eq("id",id);
+    if(error){alert(error.message);return}
+    const diff=stock-Number(old.stock||0);
+    if(diff!==0){const mv=await cloud.rpc("inventory_move",{p_product_id:id,p_quantity:Math.abs(diff),p_type:diff>0?"entry":"exit"});if(mv.error){alert(mv.error.message);return}}
+  }else{
+    const {error}=await cloud.from("products").insert({name,price,cost,stock,unit,icon:"🛒",ipv_initial_stock:stock});
+    if(error){alert(error.message);return}
+  }
+  closeProductModal();await cloudLoadAll();
+};
+
+deleteProduct=async function(id){
+  if(!isAdmin()){alert("Solo el administrador puede eliminar productos.");return}
+  const p=getProduct(id);if(!p)return;if(!confirm(`¿Eliminar "${p.name}"?`))return;
+  const {error}=await cloud.from("products").delete().eq("id",id);
+  if(error){alert("No se puede eliminar si tiene ventas relacionadas.");return}
+  cart=cart.filter(x=>x.productId!==id);await cloudLoadAll();renderCart();
+};
+
+/* Solo administrador: botón para importar los productos locales existentes a la nube. */
+async function importLocalProductsToCloud(){
+  if(!isAdmin()){alert("Solo el administrador puede importar datos.");return}
+  const local=loadData("italy_products",[]);
+  if(!local.length){alert("No hay productos locales para importar.");return}
+  if(!confirm(`Se intentarán importar ${local.length} productos. ¿Continuar?`))return;
+  for(const p of local){
+    const {error}=await cloud.from("products").upsert({id:(p.id&&/^[0-9a-f-]{36}$/i.test(p.id))?p.id:undefined,name:p.name,price:Number(p.price)||0,cost:Number(p.cost)||0,stock:Number(p.stock)||0,unit:p.unit||"unidad",icon:p.icon||"🛒",ipv_initial_stock:Number(p.ipvInitialStock)||Number(p.stock)||0,ipv_entries:Number(p.ipvEntries)||0,ipv_sales:Number(p.ipvSales)||0,ipv_other_exits:Number(p.ipvOtherExits)||0});
+    if(error){console.error(error)}
+  }
+  await cloudLoadAll();alert("Importación terminada. Revisa el inventario compartido.");
+}
+
+function renderProductsAdminCloudGuard(){
+  const old=document.querySelector('#productsAdmin')?.parentElement; if(!old)return;
+  if(isAdmin() && !document.getElementById('importCloudBtn')){
+    const b=document.createElement('button');b.id='importCloudBtn';b.className='secondary';b.style='width:100%;margin-top:8px';b.textContent='☁️ Importar productos locales a la nube';b.onclick=importLocalProductsToCloud;old.insertBefore(b,document.getElementById('productsAdmin'));
+  }
+}
+
+const _renderProductsAdmin=renderProductsAdmin;
+renderProductsAdmin=function(){_renderProductsAdmin();renderProductsAdminCloudGuard()};
+
+initCloud();
+</script>
 </body>
 </html>
