@@ -1,4 +1,4 @@
-const CACHE_NAME = "tienda-italy-mau-v2";
+const CACHE_NAME = "tienda-italy-mau-v4";
 
 const APP_FILES = [
   "./",
@@ -9,7 +9,9 @@ const APP_FILES = [
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
 ];
 
-// INSTALACIÓN
+// ================================
+// INSTALACIÓN — VERSIÓN 4
+// ================================
 self.addEventListener("install", event => {
   event.waitUntil(
     (async () => {
@@ -19,7 +21,11 @@ self.addEventListener("install", event => {
         try {
           await cache.add(file);
         } catch (error) {
-          console.warn("No se pudo guardar en caché:", file, error);
+          console.warn(
+            "No se pudo guardar en caché:",
+            file,
+            error
+          );
         }
       }
 
@@ -28,7 +34,9 @@ self.addEventListener("install", event => {
   );
 });
 
-// ACTIVACIÓN
+// ================================
+// ACTIVACIÓN — ELIMINAR CACHÉS VIEJAS
+// ================================
 self.addEventListener("activate", event => {
   event.waitUntil(
     (async () => {
@@ -45,17 +53,20 @@ self.addEventListener("activate", event => {
   );
 });
 
+// ================================
 // PETICIONES
+// ================================
 self.addEventListener("fetch", event => {
   const request = event.request;
 
-  // Solo manejar peticiones GET
+  // Solo procesamos peticiones GET
   if (request.method !== "GET") {
     return;
   }
 
-  // Navegación: primero intenta Internet.
-  // Si no hay Internet, utiliza index.html guardado.
+  // ================================
+  // PÁGINAS / NAVEGACIÓN
+  // ================================
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -78,20 +89,28 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // Otros archivos:
-  // primero caché, después Internet.
+  // ================================
+  // ARCHIVOS Y RECURSOS
+  // ================================
   event.respondWith(
     caches.match(request)
       .then(cachedResponse => {
+
+        // Si existe en caché, usarlo inmediatamente
         if (cachedResponse) {
           return cachedResponse;
         }
 
+        // Si no existe, intentar Internet
         return fetch(request)
           .then(response => {
+
             if (
               response &&
-              (response.ok || response.type === "opaque")
+              (
+                response.ok ||
+                response.type === "opaque"
+              )
             ) {
               const copy = response.clone();
 
@@ -103,10 +122,13 @@ self.addEventListener("fetch", event => {
             return response;
           })
           .catch(() => {
+
+            // Si no hay Internet y tampoco está en caché
             return new Response("", {
               status: 503,
               statusText: "Offline"
             });
+
           });
       })
   );
