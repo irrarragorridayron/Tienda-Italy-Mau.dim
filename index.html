@@ -170,7 +170,14 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <h2 class="section-title">⚙️ Productos</h2>
 <p class="subtitle">Administra los productos de tu tienda.</p>
 <button class="primary" onclick="openProductModal()">➕ Agregar producto</button>
-<br><br>
+
+<div id="adminToolsCard" class="card" style="margin-top:14px;display:none">
+  <h3 style="margin-top:0">🔐 Administración</h3>
+  <div class="hint">Esta opción reinicia los datos compartidos de la tienda. Se eliminan las ventas y movimientos, se reinicia el capital y los productos quedan con existencia 0.</div>
+  <button class="danger" style="width:100%;padding:14px" onclick="resetAllStoreData()">🗑️ Reiniciar todos los datos</button>
+</div>
+
+<br>
 <div id="productsAdmin"></div>
 </section>
 </main>
@@ -763,8 +770,99 @@ async function importLocalProductsToCloud(){
 
 function renderProductsAdminCloudGuard(){
   const old=document.querySelector('#productsAdmin')?.parentElement; if(!old)return;
+  const tools=document.getElementById("adminToolsCard");
+  if(tools) tools.style.display=isAdmin()?"block":"none";
   if(isAdmin() && !document.getElementById('importCloudBtn')){
     const b=document.createElement('button');b.id='importCloudBtn';b.className='secondary';b.style='width:100%;margin-top:8px';b.textContent='☁️ Importar productos locales a la nube';b.onclick=importLocalProductsToCloud;old.insertBefore(b,document.getElementById('productsAdmin'));
+  }
+}
+
+/* ===== REINICIO TOTAL SOLO ADMINISTRADOR =====
+   El borrado compartido se hace mediante una función SQL/RPC en Supabase.
+   Esto evita intentar borrar tablas sensibles directamente desde el navegador.
+*/
+async function resetAllStoreData(){
+  if(!isAdmin()){
+    alert("Solo el administrador puede reiniciar los datos.");
+    return;
+  }
+
+  const first=confirm(
+    "⚠️ ATENCIÓN\n\nEsto reiniciará los datos compartidos de la tienda:\n" +
+    "• Ventas\n• Movimientos de inventario\n• Capital inicial\n• Existencias y contadores IPV de los productos\n\n" +
+    "Esta acción no se puede deshacer. ¿Quieres continuar?"
+  );
+  if(!first)return;
+
+  const second=prompt('Para confirmar escribe exactamente: REINICIAR');
+  if(second!=="REINICIAR"){
+    alert("Reinicio cancelado.");
+    return;
+  }
+
+  try{
+    if(cloudUser && cloud){
+      const {error}=await cloud.rpc("reset_shop_data");
+      if(error){
+        console.error(error);
+        alert("No se pudo reiniciar la tienda en Supabase.\n\nAsegúrate de haber creado la función SQL "reset_shop_data" y de tener los permisos correspondientes.");
+        return;
+      }
+
+      cart=[];
+      products=[];
+      sales=[];
+      ipvMovements=[];
+      ipvDailyReports=[];
+      capitalInitial=0;
+
+      localStorage.removeItem("italy_products");
+      localStorage.removeItem("italy_sales");
+      localStorage.removeItem("italy_ipv_movements");
+      localStorage.removeItem("italy_ipv_daily");
+      localStorage.removeItem("italy_capital_initial");
+
+      await cloudLoadAll();
+      renderSaleProducts();
+      renderCart();
+      renderInventory();
+      renderSales();
+      renderProductsAdmin();
+      renderIPVDailyHistory();
+      renderCapital();
+
+      alert("✅ Todos los datos de la tienda fueron reiniciados correctamente.");
+      return;
+    }
+
+    /* Modo local: limpia únicamente los datos de este dispositivo. */
+    cart=[];
+    products=[];
+    sales=[];
+    ipvMovements=[];
+    ipvDailyReports=[];
+    capitalInitial=0;
+
+    localStorage.removeItem("italy_products");
+    localStorage.removeItem("italy_sales");
+    localStorage.removeItem("italy_ipv_movements");
+    localStorage.removeItem("italy_ipv_daily");
+    localStorage.removeItem("italy_capital_initial");
+
+    products=DEFAULT_PRODUCTS.map(p=>({...p}));
+    ensureIPVData();
+    renderSaleProducts();
+    renderCart();
+    renderInventory();
+    renderSales();
+    renderProductsAdmin();
+    renderIPVDailyHistory();
+    renderCapital();
+
+    alert("✅ Datos locales reiniciados en este dispositivo.");
+  }catch(e){
+    console.error(e);
+    alert("Ocurrió un error al reiniciar los datos.");
   }
 }
 
