@@ -655,9 +655,19 @@ const CLOUD_USER_KEY="italy_cloud_user_v1";
 let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null, cloudLoadSequence=0, resetInProgress=false, resetProtectionUntil=0;
 const SYNC_OPS_KEY="italy_sync_operations_v1";
 let syncOperations=[];
+let syncOperationsRunning=false;
 try{syncOperations=JSON.parse(localStorage.getItem(SYNC_OPS_KEY)||"[]");if(!Array.isArray(syncOperations))syncOperations=[]}catch(e){syncOperations=[]}
 function saveSyncOperations(){try{localStorage.setItem(SYNC_OPS_KEY,JSON.stringify(syncOperations))}catch(e){console.warn("No se pudo guardar la cola de sincronización",e)}}
-function queueSyncOperation(type,payload={}){const op={id:"op-"+generateId(),type,createdAt:new Date().toISOString(),userId:cloudUser?.id||null,payload};syncOperations.push(op);saveSyncOperations();updateOfflineStatus();return op}
+function queueSyncOperation(type,payload={}){
+  // Never enqueue the same logical operation twice. This is especially important
+  // when Android fires several online/reconnect events at nearly the same time.
+  if(type==="product_create" && payload?.id){
+    const existing=syncOperations.find(o=>o.type==="product_create" && o.payload?.id===payload.id);
+    if(existing){updateOfflineStatus();return existing}
+  }
+  const op={id:"op-"+generateId(),type,createdAt:new Date().toISOString(),userId:cloudUser?.id||null,payload};
+  syncOperations.push(op);saveSyncOperations();updateOfflineStatus();return op
+}
 function syncOperationCount(){return syncOperations.filter(o=>o.type!=="reset").length+syncOperations.filter(o=>o.type==="reset").length}
 
 
@@ -684,7 +694,9 @@ function queueOfflineSale(sale,payment){
 }
 async function syncPendingOperations(){
   if(resetInProgress || !cloudUser || !cloud || !navigator.onLine)return;
+  if(syncOperationsRunning)return;
   if(!syncOperations.length)return;
+  syncOperationsRunning=true;
 
   // Operations are synchronized in the exact order in which they were created.
   // This is important for: RESET -> product creation -> later offline work.
@@ -746,6 +758,7 @@ async function syncPendingOperations(){
     }
   }
   updateOfflineStatus();
+  syncOperationsRunning=false;
 }
 
 async function syncPendingSales(){
@@ -859,6 +872,7 @@ async function cloudLogout(){if(cloud) await cloud.auth.signOut(); cloudUser=nul
 
 async function cloudLoadAll(){
   if(!cloudUser)return false;
+  const loadSequence=++cloudLoadSequence;
 
   // OFFLINE: keep using the last verified local snapshot.
   // Never attempt a network read and never erase the local offline queue.
@@ -883,6 +897,8 @@ async function cloudLoadAll(){
       cloud.from("shop_settings").select("*").eq("id",1).maybeSingle()
     ]);
 
+    // A slower request must never overwrite a newer cloud snapshot.
+    if(loadSequence!==cloudLoadSequence)return false;
     const err=pr.error||sr.error||mr.error||cr.error;
     if(err){
       console.warn("Supabase no disponible:",err);
@@ -1211,6 +1227,21 @@ saveProduct=async function(){
         return;
       }
 
+      // The INSERT is already confirmed by Supabase. Put the returned row in the
+      // local snapshot immediately so a concurrent realtime refresh cannot make
+      // the new product disappear from the screen.
+      if(created){
+        const localCreated={
+          id:created.id,name:created.name,price:Number(created.price)||0,cost:Number(created.cost)||0,
+          stock:Number(created.stock)||0,unit:created.unit||"unidad",icon:created.icon||"🛒",
+          ipvInitialStock:Number(created.ipv_initial_stock)||0,ipvEntries:Number(created.ipv_entries)||0,
+          ipvSales:Number(created.ipv_sales)||0,ipvOtherExits:Number(created.ipv_other_exits)||0
+        };
+        products=products.filter(p=>p.id!==localCreated.id);
+        products.push(localCreated);
+        saveData("italy_products",products);
+        renderProductsAdmin();renderSaleProducts();renderInventory();
+      }
       closeProductModal();
       await cloudLoadAll();
       renderProductsAdmin();refreshAdminUI();
