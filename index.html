@@ -1347,7 +1347,7 @@ async function initialStoreSetupAdmin(){
   if(!isAdmin()){alert("Solo el administrador puede hacer la puesta a cero inicial.");return}
   if(!navigator.onLine||!cloud||!cloudUser){alert("La puesta a cero inicial requiere Internet y una sesión activa del administrador. No se hará ningún reinicio offline.");return}
   if(!confirm("⚠️ PUESTA A CERO INICIAL\n\nSe eliminarán del sistema compartido todas las ventas, movimientos, capital e historial IPV. Los productos se conservarán.\n\nHaz esto SOLO antes de comenzar a usar la tienda.\n\n¿Continuar?"))return;
-  if(prompt("Para confirmar escribe exactamente: EMPEZAR DE CERO")!=="EMPEZAR DE CERO"){alert("Puesta a cero cancelada.");return}
+  if(!confirm("⚠️ ÚLTIMA CONFIRMACIÓN\n\nEsta acción dejará la tienda compartida lista para comenzar desde cero.\n\nSe eliminarán las ventas, movimientos, capital e historial IPV anteriores. Los productos se conservarán.\n\n¿Confirmas que quieres comenzar desde cero?")){alert("Puesta a cero cancelada.");return}
   try{
     resetInProgress=true; resetProtectionUntil=Date.now()+15000; if(cloud)cloud.removeAllChannels();
     const {error}=await cloud.rpc("reset_shop_data");
