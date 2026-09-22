@@ -318,6 +318,7 @@ ensureIPVData();
 function saveData(key,value){localStorage.setItem(key,JSON.stringify(value))}
 function loadData(key,fallback){try{const d=localStorage.getItem(key);return d===null?fallback:JSON.parse(d)}catch(e){return fallback}}
 function generateId(){return Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function generateUUID(){try{if(window.crypto&&crypto.randomUUID)return crypto.randomUUID()}catch(e){}return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==="x"?r:(r&0x3)|0x8;return v.toString(16)})}
 function getProduct(id){return products.find(p=>p.id===id)}
 function money(v){return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(v)||0)}
 function esc(v){return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
@@ -685,25 +686,61 @@ async function syncPendingOperations(){
   if(resetInProgress || !cloudUser || !cloud || !navigator.onLine)return;
   if(!syncOperations.length)return;
 
-  // RESET operations are always synchronized before offline sales.
-  // This preserves the intended order: administrator reset -> subsequent work.
+  // Operations are synchronized in the exact order in which they were created.
+  // This is important for: RESET -> product creation -> later offline work.
   const queue=syncOperations.slice().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
   for(const op of queue){
     if(!navigator.onLine)break;
-    if(op.type!=="reset")continue;
-    resetInProgress=true;
+
     try{
-      const {error}=await cloud.rpc("reset_shop_data");
-      if(error){
-        if(isNetworkFailure(error))break;
-        op.syncError=error.message||"Error de sincronización";
+      if(op.type==="reset"){
+        resetInProgress=true;
+        const {error}=await cloud.rpc("reset_shop_data");
+        if(error){
+          if(isNetworkFailure(error))break;
+          op.syncError=error.message||"Error de sincronización";
+          saveSyncOperations();
+          console.error("Reinicio pendiente requiere revisión:",error);
+          break;
+        }
+        syncOperations=syncOperations.filter(x=>x.id!==op.id);
         saveSyncOperations();
-        console.error("Reinicio pendiente requiere revisión:",error);
-        break;
+        resetInProgress=false;
+        continue;
       }
-      syncOperations=syncOperations.filter(x=>x.id!==op.id);
+
+      if(op.type==="product_create"){
+        const p=op.payload||{};
+        const {error}=await cloud.from("products").insert({
+          id:p.id,name:p.name,price:Number(p.price)||0,cost:Number(p.cost)||0,
+          stock:Math.floor(Number(p.stock)||0),unit:p.unit||"unidad",icon:p.icon||"🛒",
+          ipv_initial_stock:Math.floor(Number(p.ipvInitialStock)||0),
+          ipv_entries:Math.floor(Number(p.ipvEntries)||0),
+          ipv_sales:Math.floor(Number(p.ipvSales)||0),
+          ipv_other_exits:Math.floor(Number(p.ipvOtherExits)||0)
+        });
+        if(error){
+          if(isNetworkFailure(error))break;
+          op.syncError=error.message||"No se pudo sincronizar el producto";
+          saveSyncOperations();
+          console.error("Producto pendiente requiere revisión:",error);
+          break;
+        }
+        syncOperations=syncOperations.filter(x=>x.id!==op.id);
+        saveSyncOperations();
+        continue;
+      }
+
+      // Unknown operation: keep it instead of deleting it.
+      op.syncError="Tipo de operación no reconocido: "+op.type;
       saveSyncOperations();
-      console.log("Reinicio offline sincronizado con Supabase:",op.id);
+      break;
+    }catch(e){
+      if(isNetworkFailure(e))break;
+      op.syncError=e.message||"Error de sincronización";
+      saveSyncOperations();
+      console.error("Operación pendiente requiere revisión:",e);
+      break;
     }finally{
       resetInProgress=false;
     }
@@ -1119,20 +1156,7 @@ saveInitialCapital=async function(){
 };
 
 saveProduct=async function(){
-  if(!navigator.onLine){alert("La administración de productos requiere Internet.");return}
-  if(!cloudUser || !cloud){alert("No hay una sesión activa de Supabase.");return}
-
-  // Re-read the profile when the UI lost the cached role after a reset/reload.
-  if(!isAdmin()){
-    try{
-      const r=await cloud.from("profiles").select("*").eq("id",cloudUser.id).maybeSingle();
-      if(!r.error && r.data){
-        cloudProfile={...r.data,role:normalizeRole(r.data.role)};
-        try{localStorage.setItem(CLOUD_PROFILE_KEY,JSON.stringify({userId:cloudUser.id,profile:cloudProfile}))}catch(e){}
-        showAppForUser();refreshAdminUI();
-      }
-    }catch(e){}
-  }
+  if(!cloudUser){alert("Inicia sesión primero.");return}
   if(!isAdmin()){alert("Solo el administrador puede administrar productos.");return}
 
   const id=document.getElementById("editingProductId").value;
@@ -1146,45 +1170,84 @@ saveProduct=async function(){
   if(!name){alert("Escribe el nombre del producto.");return}
   if(!Number.isFinite(price)||price<0||!Number.isFinite(cost)||cost<0||!Number.isFinite(stock)||stock<0){alert("Revisa los datos del producto.");return}
 
-  try{
-    if(id){
-      const old=getProduct(id);
-      if(!old){alert("El producto ya no está disponible. Recarga el inventario.");await cloudLoadAll();return}
-      const {error}=await cloud.from("products").update({
-        name,price,cost,unit,updated_at:new Date().toISOString()
-      }).eq("id",id);
-      if(error){alert("No se pudo actualizar el producto: "+error.message);return}
+  // NEW PRODUCT: it can now be created OFFLINE by the administrator.
+  if(!id){
+    const newProduct={
+      id:generateUUID(),name,price,cost,stock,unit,icon:"🛒",
+      ipvInitialStock:stock,ipvEntries:0,ipvSales:0,ipvOtherExits:0
+    };
 
-      const diff=stock-Number(old.stock||0);
-      if(diff!==0){
-        const mv=await cloud.rpc("inventory_move",{
-          p_product_id:id,p_quantity:Math.abs(diff),p_type:diff>0?"entry":"exit"
-        });
-        if(mv.error){alert("El producto se actualizó, pero no se pudo ajustar la existencia: "+mv.error.message);await cloudLoadAll();return}
-      }
-    }else{
-      // New products are created directly in Supabase. The server generates the UUID.
+    if(!navigator.onLine || !cloud){
+      products.push(newProduct);
+      saveData("italy_products",products);
+      queueSyncOperation("product_create",newProduct);
+      closeProductModal();
+      renderProductsAdmin();renderSaleProducts();renderInventory();refreshAdminUI();
+      alert("✅ Producto creado en este teléfono.\n\n📴 Quedó pendiente de sincronización. Cuando vuelva Internet se enviará automáticamente a Supabase.");
+      return;
+    }
+
+    try{
       const {data:created,error}=await cloud.from("products").insert({
-        name,price,cost,stock,unit,icon:"🛒",ipv_initial_stock:stock,
-        ipv_entries:0,ipv_sales:0,ipv_other_exits:0
+        id:newProduct.id,name:newProduct.name,price:newProduct.price,cost:newProduct.cost,
+        stock:newProduct.stock,unit:newProduct.unit,icon:newProduct.icon,
+        ipv_initial_stock:newProduct.ipvInitialStock,ipv_entries:0,ipv_sales:0,ipv_other_exits:0
       }).select("*").single();
+
       if(error){
-        alert("No se pudo crear el producto en Supabase:\n\n"+error.message+
+        // A connection failure becomes an offline operation. RLS/database errors remain visible.
+        if(isNetworkFailure(error)){
+          products.push(newProduct);
+          saveData("italy_products",products);
+          queueSyncOperation("product_create",newProduct);
+          closeProductModal();
+          renderProductsAdmin();renderSaleProducts();renderInventory();refreshAdminUI();
+          alert("📴 Se perdió la conexión. El producto quedó guardado localmente y se sincronizará cuando vuelva Internet.");
+          return;
+        }
+        alert("No se pudo crear el producto en Supabase:\n\n"+(error.message||"Error desconocido")+
           (error.code?"\n\nCódigo: "+error.code:"")+
           (error.details?"\n\nDetalles: "+error.details:""));
         return;
       }
-      if(created) console.log("Producto creado:",created.id);
-    }
 
-    closeProductModal();
-    await cloudLoadAll();
-    renderProductsAdmin();
-    refreshAdminUI();
-  }catch(e){
-    console.error("Error guardando producto:",e);
-    alert("Ocurrió un error al guardar el producto: "+(e.message||e));
+      closeProductModal();
+      await cloudLoadAll();
+      renderProductsAdmin();refreshAdminUI();
+      alert("✅ Producto creado correctamente.");
+      return;
+    }catch(e){
+      if(isNetworkFailure(e)){
+        products.push(newProduct);
+        saveData("italy_products",products);
+        queueSyncOperation("product_create",newProduct);
+        closeProductModal();
+        renderProductsAdmin();renderSaleProducts();renderInventory();refreshAdminUI();
+        alert("📴 El producto quedó guardado localmente y se sincronizará cuando vuelva Internet.");
+        return;
+      }
+      alert("Ocurrió un error al crear el producto: "+(e.message||e));
+      return;
+    }
   }
+
+  // EDIT EXISTING PRODUCT: keep the existing online-only inventory logic for now.
+  if(!navigator.onLine){alert("Para editar un producto existente necesitamos conexión en esta primera versión. La creación de productos sí funciona offline.");return}
+  if(!cloud){alert("Supabase no está disponible.");return}
+
+  try{
+    const old=getProduct(id);
+    if(!old){alert("El producto ya no está disponible. Recarga el inventario.");await cloudLoadAll();return}
+    const {error}=await cloud.from("products").update({name,price,cost,unit,updated_at:new Date().toISOString()}).eq("id",id);
+    if(error){alert("No se pudo actualizar el producto: "+error.message);return}
+    const diff=stock-Number(old.stock||0);
+    if(diff!==0){
+      const mv=await cloud.rpc("inventory_move",{p_product_id:id,p_quantity:Math.abs(diff),p_type:diff>0?"entry":"exit"});
+      if(mv.error){alert("El producto se actualizó, pero no se pudo ajustar la existencia: "+mv.error.message);await cloudLoadAll();return}
+    }
+    closeProductModal();await cloudLoadAll();renderProductsAdmin();refreshAdminUI();
+    alert("✅ Producto actualizado correctamente.");
+  }catch(e){alert("Ocurrió un error al actualizar el producto: "+(e.message||e))}
 };
 
 deleteProduct=async function(id){
