@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#111111">
-<meta name="app-version" content="5">
+<meta name="app-version" content="6">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -244,37 +244,41 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 
 
 <script>
-/* Italy Mau.dim — cache/source-of-truth patch v5 */
-window.ITALY_MAU_APP_VERSION = "5";
-
+/* Italy Mau.dim — cache/source-of-truth patch v6 */
 (function(){
-  const OLD_KEYS = [
-    "italy_products",
-    "italy_sales",
-    "italy_pending_sales",
-    "italy_ipv_movements",
-    "italy_ipv_daily",
-    "italy_capital_initial"
-  ];
+  const VERSION="6";
+  const BOOT_KEY="italy_mau_bootstrap_v6_done";
+  const RELOAD_KEY="italy_mau_reload_v6";
+  const DATA_KEYS=["italy_products","italy_sales","italy_pending_sales","italy_ipv_movements","italy_ipv_daily","italy_capital_initial"];
+  window.ITALY_MAU_APP_VERSION=VERSION;
+  window.__cloudMustBeAuthoritative=navigator.onLine;
 
-  // When online, stale local data must never win over Supabase.
-  window.__cloudMustBeAuthoritative = false;
-
-  window.addEventListener("online", function(){
-    window.__cloudMustBeAuthoritative = true;
-  });
-
-  // If a previous app version left stale data after a cloud reset,
-  // don't let that data survive a fresh online session.
-  if (navigator.onLine) {
-    window.__cloudMustBeAuthoritative = true;
+  async function cleanupOnce(){
+    if(!navigator.onLine || localStorage.getItem(BOOT_KEY)===VERSION) return;
+    localStorage.setItem(BOOT_KEY,VERSION);
+    for(const key of DATA_KEYS){try{localStorage.removeItem(key)}catch(e){}}
+    try{
+      if("serviceWorker" in navigator){
+        const regs=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r=>r.unregister()));
+      }
+    }catch(e){console.warn("No se pudieron quitar los Service Workers",e)}
+    try{
+      if("caches" in window){
+        const names=await caches.keys();
+        await Promise.all(names.map(n=>caches.delete(n)));
+      }
+    }catch(e){console.warn("No se pudieron limpiar las cachés",e)}
+    try{sessionStorage.setItem(RELOAD_KEY,"1");location.reload()}catch(e){}
   }
 
-  window.__italyClearLocalStore = function(){
-    for (const key of OLD_KEYS) {
-      try { localStorage.removeItem(key); } catch(e) {}
-    }
-  };
+  if(navigator.onLine && sessionStorage.getItem(RELOAD_KEY)!==VERSION){
+    cleanupOnce();
+  }else if(sessionStorage.getItem(RELOAD_KEY)===VERSION){
+    sessionStorage.removeItem(RELOAD_KEY);
+  }
+
+  window.addEventListener("online",()=>{window.__cloudMustBeAuthoritative=true});
 })();
 </script>
 
@@ -637,7 +641,7 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=5").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=6").catch(e=>console.error(e)));}</script>
 <script>
 /* ===== MODO MULTIUSUARIO / SUPABASE =====
    1) Pega aquí el Project URL y la Publishable/anon key de TU proyecto Supabase.
@@ -799,9 +803,10 @@ async function cloudLoadAll(){
 
     capitalInitial=Number(cr.data?.capital_initial)||0;
 
-    // Pending offline sales are preserved ONLY while genuinely pending.
-    // They are not allowed to resurrect old cloud sales after a reset.
-    if(!pendingSales.length){
+    // When online, Supabase is authoritative. Pending offline sales are
+    // synchronized separately and are never merged into the cloud result.
+    if(navigator.onLine){
+      pendingSales=[];
       localStorage.removeItem("italy_pending_sales");
     }
 
@@ -1037,6 +1042,7 @@ async function resetAllStoreData(){
     localStorage.removeItem("italy_ipv_movements");
     localStorage.removeItem("italy_ipv_daily");
     localStorage.removeItem("italy_capital_initial");
+    try{localStorage.setItem("italy_mau_bootstrap_v6_done","6")}catch(e){}
 
     // Re-read the authoritative state from Supabase.
     const loaded=await cloudLoadAll();
