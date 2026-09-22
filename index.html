@@ -608,7 +608,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 */
 const SUPABASE_URL="https://nnqthpdjbdqrdbodzwzf.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_nEMRdAA1nw7yEyqzz7aKzA_J1WTDVMC"
-let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null;
+let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null, cloudLoadSequence=0, resetInProgress=false;
 
 /* ===== OFFLINE REAL / COLA DE VENTAS ===== */
 function savePendingSales(){saveData("italy_pending_sales",pendingSales);}
@@ -632,6 +632,7 @@ function queueOfflineSale(sale,payment){
   savePendingSales();saveLocalSale(sale);
 }
 async function syncPendingSales(){
+  if(resetInProgress)return;
   if(!cloudUser||!cloud||!navigator.onLine||!pendingSales.length){updateOfflineStatus();return;}
   updateOfflineStatus();
   const queue=pendingSales.slice();
@@ -690,7 +691,8 @@ async function cloudLogin(){
 async function cloudLogout(){if(cloud) await cloud.auth.signOut(); cloudUser=null;cloudProfile=null;showLogin()}
 
 async function cloudLoadAll(){
-  if(!cloudUser)return false;
+  if(!cloudUser||!cloud)return false;
+  const myLoad=++cloudLoadSequence;
   try{
     const [pr,sr,mr,cr]=await Promise.all([
       cloud.from("products").select("*").order("created_at",{ascending:true}),
@@ -698,40 +700,110 @@ async function cloudLoadAll(){
       cloud.from("inventory_movements").select("*").order("created_at",{ascending:false}),
       cloud.from("shop_settings").select("*").eq("id",1).maybeSingle()
     ]);
-    if(pr.error||sr.error||mr.error||cr.error){const err=pr.error||sr.error||mr.error||cr.error;console.warn("Supabase no está disponible; se conserva la copia local.",err);if(!isNetworkFailure(err))cloudMessage(err.message);updateOfflineStatus();return false;}
-    products=(pr.data||[]).map(p=>({id:p.id,name:p.name,price:Number(p.price),cost:Number(p.cost),stock:Number(p.stock),unit:p.unit,icon:p.icon,ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0}));
-    sales=(sr.data||[]).map(s=>({id:s.id,date:s.created_at,payment:s.payment,total:Number(s.total),costTotal:Number(s.cost_total),profit:Number(s.profit),userId:s.user_id,items:(s.sale_items||[]).map(i=>({productId:i.product_id,name:i.product_name,quantity:Number(i.quantity),price:Number(i.price),cost:Number(i.cost),subtotal:Number(i.subtotal)}))}));
-    ipvMovements=(mr.data||[]).map(m=>({id:m.id,date:m.created_at,type:m.type,productId:m.product_id,quantity:Number(m.quantity),userId:m.user_id}));
 
-    /* Nunca dejamos que una actualización de la nube borre visualmente una
-       venta que todavía está pendiente en el dispositivo. También aplicamos
-       esas ventas pendientes al stock local hasta que Supabase las confirme. */
-    const pendingIds=new Set(pendingSales.map(x=>x.localId));
+    if(myLoad!==cloudLoadSequence)return false;
+
+    if(pr.error||sr.error||mr.error||cr.error){
+      const err=pr.error||sr.error||mr.error||cr.error;
+      console.warn("Supabase no está disponible; se conserva la copia local.",err);
+      if(!isNetworkFailure(err))cloudMessage(err.message);
+      updateOfflineStatus();
+      return false;
+    }
+
+    products=(pr.data||[]).map(p=>({
+      id:p.id,
+      name:p.name,
+      price:Number(p.price)||0,
+      cost:Number(p.cost)||0,
+      stock:Number(p.stock)||0,
+      unit:p.unit,
+      icon:p.icon,
+      ipvInitialStock:Number(p.ipv_initial_stock)||0,
+      ipvEntries:Number(p.ipv_entries)||0,
+      ipvSales:Number(p.ipv_sales)||0,
+      ipvOtherExits:Number(p.ipv_other_exits)||0
+    }));
+
+    sales=(sr.data||[]).map(s=>({
+      id:s.id,
+      date:s.created_at,
+      payment:s.payment,
+      total:Number(s.total)||0,
+      costTotal:Number(s.cost_total)||0,
+      profit:Number(s.profit)||0,
+      userId:s.user_id,
+      items:(s.sale_items||[]).map(i=>({
+        productId:i.product_id,
+        name:i.product_name,
+        quantity:Number(i.quantity)||0,
+        price:Number(i.price)||0,
+        cost:Number(i.cost)||0,
+        subtotal:Number(i.subtotal)||0
+      }))
+    }));
+
+    ipvMovements=(mr.data||[]).map(m=>({
+      id:m.id,
+      date:m.created_at,
+      type:m.type,
+      productId:m.product_id,
+      quantity:Number(m.quantity)||0,
+      userId:m.user_id
+    }));
+
+    /* Las ventas pendientes solo se reaplican cuando realmente existen.
+       Durante un reinicio, pendingSales se vacía antes de cargar la nube. */
     const localSales=loadData("italy_sales",[]);
     for(const pending of pendingSales){
       const local=localSales.find(x=>x.id===pending.localId);
-      if(local && !sales.some(x=>x.id===local.id)) sales.push(local);
-      for(const item of pending.items){
+      if(local && !sales.some(x=>x.id===local.id))sales.push(local);
+      for(const item of pending.items||[]){
         const p=products.find(x=>x.id===item.productId);
-        if(p){p.stock=Math.max(0,Number(p.stock||0)-Number(item.quantity||0));p.ipvSales=(Number(p.ipvSales)||0)+Number(item.quantity||0);}
+        if(p){
+          p.stock=Math.max(0,Number(p.stock||0)-Number(item.quantity||0));
+          p.ipvSales=(Number(p.ipvSales)||0)+Number(item.quantity||0);
+        }
       }
     }
+
     sales.sort((a,b)=>new Date(b.date)-new Date(a.date));
     capitalInitial=Number(cr.data?.capital_initial)||0;
-    localStorage.setItem("italy_products",JSON.stringify(products));localStorage.setItem("italy_sales",JSON.stringify(sales));localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));localStorage.setItem("italy_capital_initial",JSON.stringify(capitalInitial));
-    ensureIPVData();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();updateOfflineStatus();return true;
-  }catch(e){console.warn("Sin conexión con Supabase; se conserva la copia local.",e);updateOfflineStatus();return false;}
+
+    localStorage.setItem("italy_products",JSON.stringify(products));
+    localStorage.setItem("italy_sales",JSON.stringify(sales));
+    localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));
+    localStorage.setItem("italy_ipv_daily",JSON.stringify(ipvDailyReports));
+    localStorage.setItem("italy_capital_initial",JSON.stringify(capitalInitial));
+
+    ensureIPVData();
+    renderSaleProducts();
+    renderCart();
+    renderInventory();
+    renderSales();
+    renderProductsAdmin();
+    renderIPVDailyHistory();
+    renderCapital();
+    updateOfflineStatus();
+    return true;
+  }catch(e){
+    if(myLoad===cloudLoadSequence){
+      console.warn("Sin conexión con Supabase; se conserva la copia local.",e);
+      updateOfflineStatus();
+    }
+    return false;
+  }
 }
 
 function subscribeCloud(){
   if(!cloud)return;
   cloud.removeAllChannels();
   cloud.channel("tienda-compartida")
-    .on("postgres_changes",{event:"*",schema:"public",table:"products"},()=>cloudLoadAll())
-    .on("postgres_changes",{event:"*",schema:"public",table:"sales"},()=>cloudLoadAll())
-    .on("postgres_changes",{event:"*",schema:"public",table:"sale_items"},()=>cloudLoadAll())
-    .on("postgres_changes",{event:"*",schema:"public",table:"inventory_movements"},()=>cloudLoadAll())
-    .on("postgres_changes",{event:"*",schema:"public",table:"shop_settings"},()=>cloudLoadAll())
+    .on("postgres_changes",{event:"*",schema:"public",table:"products"},()=>{if(!resetInProgress)cloudLoadAll()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"sales"},()=>{if(!resetInProgress)cloudLoadAll()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"sale_items"},()=>{if(!resetInProgress)cloudLoadAll()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"inventory_movements"},()=>{if(!resetInProgress)cloudLoadAll()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"shop_settings"},()=>{if(!resetInProgress)cloudLoadAll()})
     .subscribe();
 }
 
@@ -870,8 +942,9 @@ async function resetAllStoreData(){
   }
 
   const first=confirm(
-    "⚠️ ATENCIÓN\n\nEsto reiniciará los datos compartidos de la tienda:\n" +
-    "• Ventas\n• Movimientos de inventario\n• Capital inicial\n• Existencias y contadores IPV de los productos\n\n" +
+    "⚠️ ATENCIÓN\n\nEsto reiniciará los datos compartidos de la tienda:\n"+
+    "• Ventas\n• Movimientos de inventario\n• Capital inicial\n• Existencias y contadores IPV de los productos\n\n"+
+    "Los productos NO se eliminarán. Solo quedarán con existencia e IPV en 0.\n\n"+
     "Esta acción no se puede deshacer. ¿Quieres continuar?"
   );
   if(!first)return;
@@ -882,67 +955,87 @@ async function resetAllStoreData(){
     return;
   }
 
+  if(!(cloudUser&&cloud)){
+    alert("No hay una sesión de Supabase activa.");
+    return;
+  }
+
+  resetInProgress=true;
+  cloudLoadSequence++;
+
   try{
-    if(cloudUser && cloud){
-      const {data:resetResult,error}=await cloud.rpc("reset_shop_data",{});
-      if(error){
-        console.error("ERROR reset_shop_data:",error);
-        const code=error.code||"sin código";
-        const message=error.message||"Sin mensaje";
-        const details=error.details||"Sin detalles";
-        const hint=error.hint||"Sin información adicional";
-        alert(
-          "❌ Supabase rechazó el reinicio.\n\n"+
-          "Mensaje: "+message+"\n\n"+
-          "Código: "+code+"\n\n"+
-          "Detalles: "+details+"\n\n"+
-          "Hint: "+hint
-        );
-        return;
-      }
+    /* Evitamos que una actualización en tiempo real cargue datos antiguos
+       mientras se está realizando el reinicio. */
+    cloud.removeAllChannels();
 
-      cart=[];
-      products=[];
-      sales=[];
-      ipvMovements=[];
-      ipvDailyReports=[];
-      capitalInitial=0;
-
-      localStorage.removeItem("italy_products");
-      localStorage.removeItem("italy_sales");
-      localStorage.removeItem("italy_ipv_movements");
-      localStorage.removeItem("italy_ipv_daily");
-      localStorage.removeItem("italy_capital_initial");
-
-      await cloudLoadAll();
-      renderSaleProducts();
-      renderCart();
-      renderInventory();
-      renderSales();
-      renderProductsAdmin();
-      renderIPVDailyHistory();
-      renderCapital();
-
-      alert("✅ Todos los datos de la tienda fueron reiniciados correctamente.");
+    const {error}=await cloud.rpc("reset_shop_data",{});
+    if(error){
+      console.error("ERROR RESET SHOP:",error);
+      alert(
+        "❌ Supabase rechazó el reinicio.\n\n"+
+        "Mensaje: "+(error.message||"Sin mensaje")+"\n\n"+
+        "Código: "+(error.code||"sin código")+"\n\n"+
+        "Detalles: "+(error.details||"sin detalles")+"\n\n"+
+        "Hint: "+(error.hint||"sin información adicional")
+      );
       return;
     }
 
-    /* Modo local: limpia únicamente los datos de este dispositivo. */
+    /* Limpiar absolutamente toda la copia local relacionada con la tienda.
+       pending_sales es especialmente importante porque cloudLoadAll podría
+       volver a aplicar una venta pendiente sobre el stock recién reiniciado. */
     cart=[];
     products=[];
     sales=[];
+    pendingSales=[];
     ipvMovements=[];
     ipvDailyReports=[];
     capitalInitial=0;
 
     localStorage.removeItem("italy_products");
     localStorage.removeItem("italy_sales");
+    localStorage.removeItem("italy_pending_sales");
     localStorage.removeItem("italy_ipv_movements");
     localStorage.removeItem("italy_ipv_daily");
     localStorage.removeItem("italy_capital_initial");
 
-    products=DEFAULT_PRODUCTS.map(p=>({...p}));
-    ensureIPVData();
+    /* Forzamos una lectura NUEVA de Supabase después del reinicio. */
+    const loaded=await cloudLoadAll();
+
+    if(!loaded){
+      alert("⚠️ Supabase reinició los datos, pero la aplicación no pudo volver a cargarlos. Recarga la página para mostrar el estado actual.");
+      return;
+    }
+
+    /* Comprobación adicional: los datos que acabamos de cargar deben reflejar
+       exactamente el estado reiniciado. Si no, no mostramos falso éxito. */
+    const badProducts=products.some(p=>
+      Number(p.stock)!==0 ||
+      Number(p.ipvInitialStock)!==0 ||
+      Number(p.ipvEntries)!==0 ||
+      Number(p.ipvSales)!==0 ||
+      Number(p.ipvOtherExits)!==0
+    );
+    const badCapital=Number(capitalInitial)!==0;
+
+    if(sales.length||ipvMovements.length||badProducts||badCapital){
+      console.warn("El RPC terminó, pero la lectura posterior no está limpia.",{
+        sales:sales.length,
+        movements:ipvMovements.length,
+        badProducts,
+        capital:capitalInitial
+      });
+      alert(
+        "⚠️ Supabase terminó el reinicio, pero la aplicación recibió datos que todavía no están en cero.\n\n"+
+        "Ventas cargadas: "+sales.length+"\n"+
+        "Movimientos cargados: "+ipvMovements.length+"\n"+
+        "Capital: "+money(capitalInitial)+"\n\n"+
+        "La página se recargará para obtener el estado directamente de Supabase."
+      );
+      window.location.reload();
+      return;
+    }
+
     renderSaleProducts();
     renderCart();
     renderInventory();
@@ -951,10 +1044,15 @@ async function resetAllStoreData(){
     renderIPVDailyHistory();
     renderCapital();
 
-    alert("✅ Datos locales reiniciados en este dispositivo.");
+    /* Reactivar las suscripciones después de tener el estado limpio. */
+    subscribeCloud();
+
+    alert("✅ Todos los datos fueron reiniciados correctamente. Los productos permanecen, pero su existencia e IPV están en 0.");
   }catch(e){
-    console.error(e);
-    alert("Ocurrió un error al reiniciar los datos.");
+    console.error("ERROR REINICIANDO TIENDA:",e);
+    alert("❌ Ocurrió un error al reiniciar la tienda:\n\n"+(e.message||e));
+  }finally{
+    resetInProgress=false;
   }
 }
 
