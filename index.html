@@ -665,6 +665,12 @@ function queueSyncOperation(type,payload={}){
     const existing=syncOperations.find(o=>o.type==="product_create" && o.payload?.id===payload.id);
     if(existing){updateOfflineStatus();return existing}
   }
+  // There can be only one pending RESET. A newer offline reset supersedes an
+  // older reset that has not reached Supabase yet; operations created after the
+  // newer reset remain in the queue and will be applied after it.
+  if(type==="reset"){
+    syncOperations=syncOperations.filter(o=>o.type!=="reset");
+  }
   const op={id:"op-"+generateId(),type,createdAt:new Date().toISOString(),userId:cloudUser?.id||null,payload};
   syncOperations.push(op);saveSyncOperations();updateOfflineStatus();return op
 }
@@ -1114,8 +1120,13 @@ window.addEventListener("online",async()=>{
       return;
     }
     if(cloudUser){
+      await syncPendingOperations();
       await syncPendingSales();
-      await cloudLoadAll();
+      // The synchronization functions update the local snapshot only after the
+      // server confirms each operation. Avoid an extra competing cloud read.
+      if(!syncOperations.length && !pendingSales.length){
+        await cloudLoadAll();
+      }
     }
   }catch(e){console.warn("No se pudo reactivar la sincronización:",e)}
 });
@@ -1242,9 +1253,12 @@ saveProduct=async function(){
         saveData("italy_products",products);
         renderProductsAdmin();renderSaleProducts();renderInventory();
       }
+      // Do NOT immediately reload the complete cloud snapshot here. A realtime
+      // callback or an older in-flight read can otherwise replace the freshly
+      // created product with stale data. The INSERT was already confirmed by
+      // Supabase and the local snapshot was updated above.
       closeProductModal();
-      await cloudLoadAll();
-      renderProductsAdmin();refreshAdminUI();
+      renderProductsAdmin();renderSaleProducts();renderInventory();refreshAdminUI();
       alert("✅ Producto creado correctamente.");
       return;
     }catch(e){
