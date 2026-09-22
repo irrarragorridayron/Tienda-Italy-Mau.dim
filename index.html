@@ -37,7 +37,7 @@ button.danger{border:0;border-radius:10px;background:#ffe4e1;color:#b42318;paddi
 .positive{color:#16803c}.negative{color:#c0392b}.sale-total{font-weight:bold;font-size:18px}.sale-date{color:#777;font-size:12px;margin-top:5px}
 .sale-products{margin-top:9px;color:#555;font-size:13px;line-height:1.5}.admin-actions{display:flex;gap:7px;margin-top:12px}.admin-actions button{flex:1}
 label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:11px;font-size:16px;background:#fff;margin-bottom:13px;outline:none}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:15px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:15px}.stat-profit{border-left:4px solid #16803c}.stat-cash{border-left:4px solid #d89b25}.stat-profit .stat-value{color:#16803c}.stat-cash .stat-value{color:#b27600}
 .stat{background:#fff;border-radius:15px;padding:15px;box-shadow:0 2px 7px #0000000d}.stat-label{color:#777;font-size:12px}.stat-value{margin-top:6px;font-size:22px;font-weight:bold}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;height:70px;background:#fff;border-top:1px solid #ddd;display:grid;grid-template-columns:repeat(4,1fr);z-index:50;box-shadow:0 -3px 12px #00000014}
 .nav-btn{border:0;background:#fff;color:#777;font-size:11px;cursor:pointer;padding:5px}.nav-btn span{display:block;font-size:23px;margin-bottom:3px}.nav-btn.active{color:#111;font-weight:bold}
@@ -150,7 +150,9 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <p class="subtitle">Resumen e historial de ventas.</p>
 <div class="stats-grid">
 <div class="stat"><div class="stat-label">VENTAS DE HOY</div><div id="todaySalesCount" class="stat-value">0</div></div>
-<div class="stat"><div class="stat-label">TOTAL DE HOY</div><div id="todaySalesTotal" class="stat-value">$0.00</div></div>
+<div class="stat"><div class="stat-label">TOTAL VENDIDO HOY</div><div id="todaySalesTotal" class="stat-value">$0.00</div></div>
+<div class="stat stat-profit"><div class="stat-label">GANANCIA DE HOY</div><div id="todayProfitTotal" class="stat-value">$0.00</div></div>
+<div class="stat stat-cash"><div class="stat-label">EFECTIVO EN CAJA</div><div id="cashInBoxTotal" class="stat-value">$0.00</div></div>
 </div>
 <div class="card">
 <h3 style="margin-top:0">💰 Capital y ganancias</h3>
@@ -159,7 +161,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <div class="capital-card"><div class="capital-label">Ganancia acumulada</div><div id="capitalProfitDisplay" class="capital-value capital-profit">$0.00</div></div>
 <div class="capital-card capital-main"><div class="capital-label">Capital actual</div><div id="capitalCurrentDisplay" class="capital-value">$0.00</div></div>
 </div>
-<div class="hint">El capital actual se calcula como <strong>capital inicial + ganancia acumulada</strong>. La ganancia de cada venta se calcula con el precio de venta menos el costo registrado del producto.</div>
+<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo del producto. El <strong>efectivo en caja</strong> se calcula como capital inicial + ventas cobradas en efectivo. Tarjeta, transferencia y otros métodos no se suman al efectivo físico.</div>
 <div class="capital-setting">
 <div><label>Establecer capital inicial</label><input id="capitalInitialInput" type="number" min="0" step="0.01" placeholder="0.00"></div>
 <button class="primary" onclick="saveInitialCapital()">💾 Guardar capital</button>
@@ -575,6 +577,19 @@ function getTodayProfit(){
   const today=localDateKey();
   return sales.filter(s=>localDateKey(s.date)===today).reduce((sum,s)=>sum+Number(s.profit||0),0);
 }
+function getCashInBox(){
+  // El capital inicial se considera el efectivo inicial de la caja.
+  // Solo las ventas cobradas en efectivo aumentan el efectivo físico.
+  const cashSales=sales.reduce((sum,s)=>{
+    const method=String(s.payment||"").trim().toLowerCase();
+    return sum+(method==="efectivo"?Number(s.total||0):0);
+  },0);
+  return Number(capitalInitial||0)+cashSales;
+}
+function getTodaySalesTotal(){
+  const today=localDateKey();
+  return sales.filter(s=>localDateKey(s.date)===today).reduce((sum,s)=>sum+Number(s.total||0),0);
+}
 function saveInitialCapital(){
   const v=Number(document.getElementById("capitalInitialInput").value);
   if(!Number.isFinite(v)||v<0){alert("Introduce un capital inicial válido.");return}
@@ -587,20 +602,25 @@ function renderCapital(){
   const profit=getAccumulatedProfit();
   const current=capitalInitial+profit;
   const todayProfit=getTodayProfit();
+  const cash=getCashInBox();
   const initialEl=document.getElementById("capitalInitialDisplay");
   if(!initialEl)return;
   initialEl.textContent=money(capitalInitial);
   document.getElementById("capitalProfitDisplay").textContent=money(profit);
   document.getElementById("capitalCurrentDisplay").textContent=money(current);
   document.getElementById("capitalInitialInput").value=capitalInitial||"";
-  document.getElementById("capitalTodayProfit").innerHTML=`Ganancia de hoy: <strong>${money(todayProfit)}</strong>`;
+  document.getElementById("capitalTodayProfit").innerHTML=`Ganancia de hoy: <strong>${money(todayProfit)}</strong><br>Efectivo en caja: <strong>${money(cash)}</strong>`;
+  const profitEl=document.getElementById("todayProfitTotal");
+  const cashEl=document.getElementById("cashInBoxTotal");
+  if(profitEl)profitEl.textContent=money(todayProfit);
+  if(cashEl)cashEl.textContent=money(cash);
 }
 
 function renderSales(){
-const today=new Date().toLocaleDateString();
-const ts=sales.filter(s=>new Date(s.date).toLocaleDateString()===today);
+const today=localDateKey();
+const ts=sales.filter(s=>localDateKey(s.date)===today);
 document.getElementById("todaySalesCount").textContent=ts.length;
-document.getElementById("todaySalesTotal").textContent=money(ts.reduce((a,s)=>a+Number(s.total),0));
+document.getElementById("todaySalesTotal").textContent=money(ts.reduce((a,s)=>a+Number(s.total||0),0));
 renderCapital();
 const c=document.getElementById("salesHistory");
 if(!sales.length){c.innerHTML='<div class="card empty">Todavía no hay ventas registradas.</div>';return}
