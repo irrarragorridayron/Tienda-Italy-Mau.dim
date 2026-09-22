@@ -652,6 +652,13 @@ const SUPABASE_ANON_KEY="sb_publishable_nEMRdAA1nw7yEyqzz7aKzA_J1WTDVMC"
 const CLOUD_PROFILE_KEY="italy_cloud_profile_v1";
 const CLOUD_USER_KEY="italy_cloud_user_v1";
 let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null, cloudLoadSequence=0, resetInProgress=false, resetProtectionUntil=0;
+const SYNC_OPS_KEY="italy_sync_operations_v1";
+let syncOperations=[];
+try{syncOperations=JSON.parse(localStorage.getItem(SYNC_OPS_KEY)||"[]");if(!Array.isArray(syncOperations))syncOperations=[]}catch(e){syncOperations=[]}
+function saveSyncOperations(){try{localStorage.setItem(SYNC_OPS_KEY,JSON.stringify(syncOperations))}catch(e){console.warn("No se pudo guardar la cola de sincronización",e)}}
+function queueSyncOperation(type,payload={}){const op={id:"op-"+generateId(),type,createdAt:new Date().toISOString(),userId:cloudUser?.id||null,payload};syncOperations.push(op);saveSyncOperations();updateOfflineStatus();return op}
+function syncOperationCount(){return syncOperations.filter(o=>o.type!=="reset").length+syncOperations.filter(o=>o.type==="reset").length}
+
 
 /* ===== OFFLINE REAL / COLA DE VENTAS ===== */
 function savePendingSales(){saveData("italy_pending_sales",pendingSales);}
@@ -663,9 +670,9 @@ function isNetworkFailure(error){
 }
 function updateOfflineStatus(){
   const el=document.getElementById("offlineStatus");if(!el)return;
-  const n=pendingSalesCount();
-  if(!navigator.onLine){el.className="offline-status offline";el.textContent=n?`📴 Sin Internet · ${n} venta${n===1?"":"s"} pendiente${n===1?"":"s"}`:"📴 Sin Internet · Modo offline";}
-  else if(n){el.className="offline-status pending";el.textContent=`🔄 Sincronizando ${n} venta${n===1?"":"s"}...`;}
+  const n=pendingSalesCount()+syncOperations.length;
+  if(!navigator.onLine){el.className="offline-status offline";el.textContent=n?`📴 Sin Internet · ${n} operación${n===1?"":"es"} pendiente${n===1?"":"s"}`:"📴 Sin Internet · Modo offline";}
+  else if(n){el.className="offline-status pending";el.textContent=`🔄 Sincronizando ${n} operación${n===1?"":"es"}...`;}
   else{el.className="offline-status";el.textContent="☁️ Conectado · Sincronizado";}
   el.style.display="block";
 }
@@ -674,7 +681,39 @@ function queueOfflineSale(sale,payment){
   pendingSales.push({localId:sale.id,createdAt:sale.date,payment,items:sale.items.map(i=>({productId:i.productId,quantity:i.quantity}))});
   savePendingSales();saveLocalSale(sale);
 }
+async function syncPendingOperations(){
+  if(resetInProgress || !cloudUser || !cloud || !navigator.onLine)return;
+  if(!syncOperations.length)return;
+
+  // RESET operations are always synchronized before offline sales.
+  // This preserves the intended order: administrator reset -> subsequent work.
+  const queue=syncOperations.slice().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
+  for(const op of queue){
+    if(!navigator.onLine)break;
+    if(op.type!=="reset")continue;
+    resetInProgress=true;
+    try{
+      const {error}=await cloud.rpc("reset_shop_data");
+      if(error){
+        if(isNetworkFailure(error))break;
+        op.syncError=error.message||"Error de sincronización";
+        saveSyncOperations();
+        console.error("Reinicio pendiente requiere revisión:",error);
+        break;
+      }
+      syncOperations=syncOperations.filter(x=>x.id!==op.id);
+      saveSyncOperations();
+      console.log("Reinicio offline sincronizado con Supabase:",op.id);
+    }finally{
+      resetInProgress=false;
+    }
+  }
+  updateOfflineStatus();
+}
+
 async function syncPendingSales(){
+  if(resetInProgress)return;
+  await syncPendingOperations();
   if(resetInProgress)return;
   if(!cloudUser||!cloud||!navigator.onLine){updateOfflineStatus();return;}
   if(!pendingSales.length){updateOfflineStatus();return;}
@@ -1007,6 +1046,7 @@ async function handleCloudSession(session){
 
   // Online startup/reconnect: send queued sales first, then refresh from server.
   if(navigator.onLine){
+    await syncPendingOperations();
     await syncPendingSales();
     await cloudLoadAll();
   }
@@ -1193,7 +1233,6 @@ function renderProductsAdminCloudGuard(){
    Esto evita intentar borrar tablas sensibles directamente desde el navegador.
 */
 async function resetAllStoreData(){
-  if(!navigator.onLine){alert("El reinicio total requiere Internet para proteger los datos compartidos.");return}
   if(!isAdmin()){
     alert("Solo el administrador puede reiniciar los datos.");
     return;
@@ -1213,8 +1252,32 @@ async function resetAllStoreData(){
     return;
   }
 
+  // OFFLINE ADMIN RESET: apply locally now and queue the exact operation for Supabase.
+  if(!navigator.onLine || !cloud){
+    if(!cloudUser){alert("No hay una sesión de administrador guardada en este dispositivo.");return}
+    resetInProgress=true;
+    try{
+      cart=[];
+      products=products.map(p=>({...p,stock:0,ipvInitialStock:0,ipvEntries:0,ipvSales:0,ipvOtherExits:0}));
+      sales=[];
+      ipvMovements=[];
+      ipvDailyReports=[];
+      capitalInitial=0;
+      // Keep pending sales. They are independent offline work and will be synchronized after the reset.
+      localStorage.setItem("italy_products",JSON.stringify(products));
+      localStorage.setItem("italy_sales",JSON.stringify(sales));
+      localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));
+      localStorage.setItem("italy_ipv_daily",JSON.stringify(ipvDailyReports));
+      localStorage.setItem("italy_capital_initial","0");
+      queueSyncOperation("reset",{preserveProducts:true,resetStock:true,resetIPV:true,resetCapital:true});
+      renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();refreshAdminUI();
+      alert("✅ Reinicio guardado en este teléfono.\n\nLos productos se conservaron y su existencia/IPV quedaron en 0.\n\nCuando vuelva Internet, el reinicio se enviará a Supabase y después se sincronizarán las ventas pendientes.");
+    }finally{resetInProgress=false;updateOfflineStatus()}
+    return;
+  }
+
   if(!cloudUser || !cloud){
-    alert("No hay una sesión de Supabase activa.");
+    alert("No hay una sesión activa de Supabase.");
     return;
   }
 
@@ -1245,14 +1308,14 @@ async function resetAllStoreData(){
     cart=[];
     products=[];
     sales=[];
-    pendingSales=[];
+    // Do not erase pending offline sales here; they are real work and must not disappear.
     ipvMovements=[];
     ipvDailyReports=[];
     capitalInitial=0;
 
     localStorage.removeItem("italy_products");
     localStorage.removeItem("italy_sales");
-    localStorage.removeItem("italy_pending_sales");
+    localStorage.setItem("italy_pending_sales",JSON.stringify(pendingSales));
     localStorage.removeItem("italy_ipv_movements");
     localStorage.removeItem("italy_ipv_daily");
     localStorage.removeItem("italy_capital_initial");
@@ -1303,6 +1366,8 @@ async function resetAllStoreData(){
     renderIPVDailyHistory();
     renderCapital();
 
+    syncOperations=syncOperations.filter(o=>o.type!=="reset");
+    saveSyncOperations();
     subscribeCloud();
 
     refreshAdminUI();
