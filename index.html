@@ -161,7 +161,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <div class="capital-card"><div class="capital-label">Ganancia acumulada</div><div id="capitalProfitDisplay" class="capital-value capital-profit">$0.00</div></div>
 <div class="capital-card capital-main"><div class="capital-label">Capital actual</div><div id="capitalCurrentDisplay" class="capital-value">$0.00</div></div>
 </div>
-<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo del producto. El <strong>efectivo en caja</strong> se calcula como capital inicial + ventas cobradas en efectivo. Tarjeta, transferencia y otros métodos no se suman al efectivo físico.</div>
+<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo del producto. El <strong>efectivo en caja</strong> representa el dinero líquido: capital inicial menos el costo de la mercancía que permanece en inventario, más las ventas cobradas en efectivo. Tarjeta, transferencia y otros métodos no se suman al efectivo físico.</div>
 <div class="capital-setting">
 <div><label>Establecer capital inicial</label><input id="capitalInitialInput" type="number" min="0" step="0.01" placeholder="0.00"></div>
 <button class="primary" onclick="saveInitialCapital()">💾 Guardar capital</button>
@@ -577,14 +577,25 @@ function getTodayProfit(){
   const today=localDateKey();
   return sales.filter(s=>localDateKey(s.date)===today).reduce((sum,s)=>sum+Number(s.profit||0),0);
 }
+function getInventoryCostValue(){
+  // El inventario que todavía existe representa dinero invertido y no efectivo líquido.
+  // Se valora siempre al costo de compra, no al precio de venta.
+  return products.reduce((sum,p)=>{
+    const stock=Math.max(0,Number(p.stock)||0);
+    const cost=Math.max(0,Number(p.cost)||0);
+    return sum+(stock*cost);
+  },0);
+}
 function getCashInBox(){
-  // El capital inicial se considera el efectivo inicial de la caja.
-  // Solo las ventas cobradas en efectivo aumentan el efectivo físico.
+  // El capital inicial es el efectivo líquido disponible antes de comprar mercancía.
+  // La mercancía que permanece en inventario deja de ser efectivo.
+  // Las ventas en efectivo vuelven a convertir mercancía en dinero líquido.
+  const inventoryCost=getInventoryCostValue();
   const cashSales=sales.reduce((sum,s)=>{
     const method=String(s.payment||"").trim().toLowerCase();
     return sum+(method==="efectivo"?Number(s.total||0):0);
   },0);
-  return Number(capitalInitial||0)+cashSales;
+  return Number(capitalInitial||0)-inventoryCost+cashSales;
 }
 function getTodaySalesTotal(){
   const today=localDateKey();
