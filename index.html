@@ -305,6 +305,7 @@ let ipvMovementType="entry";
 let ipvDailyReports=loadData("italy_ipv_daily",[]);
 let ipvMovements=loadData("italy_ipv_movements",[]);
 let capitalInitial=Number(loadData("italy_capital_initial",0))||0;
+let initialStoreCutoff=localStorage.getItem("italy_initial_store_cutoff_v1")||"";
 
 if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
 
@@ -942,7 +943,7 @@ async function cloudLoadAll(){
       }))
     }));
 
-    ipvMovements=(mr.data||[]).map(m=>({
+    const allCloudMovements=(mr.data||[]).map(m=>({
       id:m.id,
       date:m.created_at,
       type:m.type,
@@ -950,6 +951,11 @@ async function cloudLoadAll(){
       quantity:Number(m.quantity),
       userId:m.user_id
     }));
+    // Once the store has been initialized, this device must never resurrect
+    // inventory movements that existed before the initial start date.
+    ipvMovements=initialStoreCutoff
+      ? allCloudMovements.filter(m=>String(m.date||"")>=String(initialStoreCutoff))
+      : allCloudMovements;
 
     capitalInitial=Number(cr.data?.capital_initial)||0;
 
@@ -1331,8 +1337,8 @@ function renderProductsAdminCloudGuard(){
 }
 
 /* ===== PUESTA A CERO INICIAL (UNA SOLA VEZ) ===== */
-function clearInitialLocalData(){
-  cart=[]; pendingSales=[]; syncOperations=syncOperations.filter(o=>o.type!=="reset");
+function clearInitialLocalData(cutoff){
+  cart=[]; pendingSales=[]; syncOperations=[];
   products=[]; sales=[]; ipvMovements=[]; ipvDailyReports=[]; capitalInitial=0;
   localStorage.removeItem("italy_products");
   localStorage.removeItem("italy_sales");
@@ -1340,6 +1346,10 @@ function clearInitialLocalData(){
   localStorage.removeItem("italy_ipv_movements");
   localStorage.removeItem("italy_ipv_daily");
   localStorage.setItem("italy_capital_initial","0");
+  if(cutoff){
+    initialStoreCutoff=cutoff;
+    localStorage.setItem("italy_initial_store_cutoff_v1",cutoff);
+  }
   saveSyncOperations();
 }
 
@@ -1377,7 +1387,8 @@ async function initialStoreSetupAdmin(){
       }
     }
 
-    clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
+    const initialCutoff=new Date().toISOString();
+    clearInitialLocalData(initialCutoff); localStorage.setItem("italy_initial_store_setup_v1","done");
     const loaded=await cloudLoadAll();
     if(!loaded){alert("⚠️ La puesta a cero se realizó en Supabase, pero no se pudo recargar el estado. Mantén Internet y vuelve a abrir la app.");subscribeCloud();return}
     const check={sales:sales.length,movements:ipvMovements.length,stock:products.filter(p=>Number(p.stock)!==0).length,ipv:products.filter(p=>Number(p.ipvInitialStock)!==0||Number(p.ipvEntries)!==0||Number(p.ipvSales)!==0||Number(p.ipvOtherExits)!==0).length,capital:Number(capitalInitial)||0};
@@ -1407,7 +1418,8 @@ async function prepareInitialDevice(){
   const oldInventory=(cloudProducts||[]).filter(p=>Number(p.stock)!==0||Number(p.ipv_initial_stock)!==0||Number(p.ipv_entries)!==0||Number(p.ipv_sales)!==0||Number(p.ipv_other_exits)!==0);
   if(oldInventory.length){alert("La tienda compartida todavía conserva existencias o IPV antiguos en Supabase.\n\nEl administrador debe volver a ejecutar la puesta a cero inicial antes de preparar este teléfono.\n\nNo se borró nada de este teléfono.");return}
   if(!confirm("📱 PREPARAR ESTE TELÉFONO\n\nSe eliminarán únicamente de este dispositivo las ventas antiguas, ventas offline pendientes, movimientos e historial IPV, capital local y colas de reinicios antiguos.\n\nNo se modificará Supabase.\n\n¿Continuar?"))return;
-  clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
+  const deviceCutoff=initialStoreCutoff||new Date().toISOString();
+  clearInitialLocalData(deviceCutoff); localStorage.setItem("italy_initial_store_setup_v1","done");
   const loaded=await cloudLoadAll(); updateInitialDeviceCard();
   alert(loaded?"✅ Este teléfono está preparado. Ya puede comenzar a registrar operaciones nuevas.":"⚠️ El teléfono fue limpiado, pero no se pudo recargar Supabase. Mantén Internet y vuelve a abrir la app.");
 }
