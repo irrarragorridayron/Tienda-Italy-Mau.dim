@@ -608,7 +608,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 */
 const SUPABASE_URL="https://nnqthpdjbdqrdbodzwzf.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_nEMRdAA1nw7yEyqzz7aKzA_J1WTDVMC"
-let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null, cloudLoadSequence=0, resetInProgress=false;
+let cloud=null, cloudUser=null, cloudProfile=null, cloudConfigured=false, cloudSyncTimer=null, cloudLoadSequence=0, resetInProgress=false, resetProtectionUntil=0;
 
 /* ===== OFFLINE REAL / COLA DE VENTAS ===== */
 function savePendingSales(){saveData("italy_pending_sales",pendingSales);}
@@ -692,6 +692,7 @@ async function cloudLogout(){if(cloud) await cloud.auth.signOut(); cloudUser=nul
 
 async function cloudLoadAll(){
   if(!cloudUser||!cloud)return false;
+  if(resetInProgress || Date.now()<resetProtectionUntil)return false;
   const myLoad=++cloudLoadSequence;
   try{
     const [pr,sr,mr,cr]=await Promise.all([
@@ -964,11 +965,12 @@ async function resetAllStoreData(){
   cloudLoadSequence++;
 
   try{
-    /* Evitamos que una actualización en tiempo real cargue datos antiguos
-       mientras se está realizando el reinicio. */
+    /* Desactivar temporalmente Realtime para que ninguna lectura antigua
+       pueda sobrescribir el estado que acabamos de reiniciar. */
     cloud.removeAllChannels();
 
-    const {error}=await cloud.rpc("reset_shop_data",{});
+    const {data:resetData,error}=await cloud.rpc("reset_shop_data",{});
+
     if(error){
       console.error("ERROR RESET SHOP:",error);
       alert(
@@ -981,17 +983,36 @@ async function resetAllStoreData(){
       return;
     }
 
-    /* Limpiar absolutamente toda la copia local relacionada con la tienda.
-       pending_sales es especialmente importante porque cloudLoadAll podría
-       volver a aplicar una venta pendiente sobre el stock recién reiniciado. */
-    cart=[];
-    products=[];
+    /*
+      reset_shop_data() ahora devuelve el estado generado por el propio RPC.
+      Usamos ese resultado como fuente de verdad y NO hacemos inmediatamente
+      otro SELECT a products/sales/movements.
+    */
+    const result=resetData||{};
+    const returnedProducts=Array.isArray(result.products)?result.products:[];
+
+    products=returnedProducts.map(p=>({
+      id:p.id,
+      name:p.name,
+      price:Number(p.price)||0,
+      cost:Number(p.cost)||0,
+      stock:0,
+      unit:p.unit,
+      icon:p.icon,
+      ipvInitialStock:0,
+      ipvEntries:0,
+      ipvSales:0,
+      ipvOtherExits:0
+    }));
+
     sales=[];
     pendingSales=[];
     ipvMovements=[];
     ipvDailyReports=[];
     capitalInitial=0;
+    cart=[];
 
+    /* Limpiar completamente la copia local. */
     localStorage.removeItem("italy_products");
     localStorage.removeItem("italy_sales");
     localStorage.removeItem("italy_pending_sales");
@@ -999,42 +1020,17 @@ async function resetAllStoreData(){
     localStorage.removeItem("italy_ipv_daily");
     localStorage.removeItem("italy_capital_initial");
 
-    /* Forzamos una lectura NUEVA de Supabase después del reinicio. */
-    const loaded=await cloudLoadAll();
+    /* Guardar inmediatamente el estado limpio que devolvió Supabase. */
+    localStorage.setItem("italy_products",JSON.stringify(products));
+    localStorage.setItem("italy_sales",JSON.stringify([]));
+    localStorage.setItem("italy_pending_sales",JSON.stringify([]));
+    localStorage.setItem("italy_ipv_movements",JSON.stringify([]));
+    localStorage.setItem("italy_ipv_daily",JSON.stringify([]));
+    localStorage.setItem("italy_capital_initial",JSON.stringify(0));
 
-    if(!loaded){
-      alert("⚠️ Supabase reinició los datos, pero la aplicación no pudo volver a cargarlos. Recarga la página para mostrar el estado actual.");
-      return;
-    }
-
-    /* Comprobación adicional: los datos que acabamos de cargar deben reflejar
-       exactamente el estado reiniciado. Si no, no mostramos falso éxito. */
-    const badProducts=products.some(p=>
-      Number(p.stock)!==0 ||
-      Number(p.ipvInitialStock)!==0 ||
-      Number(p.ipvEntries)!==0 ||
-      Number(p.ipvSales)!==0 ||
-      Number(p.ipvOtherExits)!==0
-    );
-    const badCapital=Number(capitalInitial)!==0;
-
-    if(sales.length||ipvMovements.length||badProducts||badCapital){
-      console.warn("El RPC terminó, pero la lectura posterior no está limpia.",{
-        sales:sales.length,
-        movements:ipvMovements.length,
-        badProducts,
-        capital:capitalInitial
-      });
-      alert(
-        "⚠️ Supabase terminó el reinicio, pero la aplicación recibió datos que todavía no están en cero.\n\n"+
-        "Ventas cargadas: "+sales.length+"\n"+
-        "Movimientos cargados: "+ipvMovements.length+"\n"+
-        "Capital: "+money(capitalInitial)+"\n\n"+
-        "La página se recargará para obtener el estado directamente de Supabase."
-      );
-      window.location.reload();
-      return;
-    }
+    /* Mantener protegida la copia recién reiniciada durante unos segundos.
+       Esto evita que eventos Realtime/lecturas atrasadas la reemplacen. */
+    resetProtectionUntil=Date.now()+15000;
 
     renderSaleProducts();
     renderCart();
@@ -1043,19 +1039,38 @@ async function resetAllStoreData(){
     renderProductsAdmin();
     renderIPVDailyHistory();
     renderCapital();
+    updateOfflineStatus();
 
-    /* Reactivar las suscripciones después de tener el estado limpio. */
-    subscribeCloud();
+    const serverSales=Number(result.sales_count)||0;
+    const serverSaleItems=Number(result.sale_items_count)||0;
+    const serverMovements=Number(result.movements_count)||0;
+    const serverCapital=Number(result.capital_initial)||0;
+
+    if(serverSales!==0 || serverSaleItems!==0 || serverMovements!==0 || serverCapital!==0){
+      alert(
+        "⚠️ El reinicio se ejecutó, pero Supabase devolvió un estado inesperado.\n\n"+
+        "Ventas: "+serverSales+"\n"+
+        "Detalles de ventas: "+serverSaleItems+"\n"+
+        "Movimientos: "+serverMovements+"\n"+
+        "Capital: "+money(serverCapital)
+      );
+      return;
+    }
 
     alert("✅ Todos los datos fueron reiniciados correctamente. Los productos permanecen, pero su existencia e IPV están en 0.");
+
+    /* Reactivar Realtime después de la ventana de protección. */
+    setTimeout(()=>{
+      resetInProgress=false;
+      subscribeCloud();
+    },16000);
+
   }catch(e){
     console.error("ERROR REINICIANDO TIENDA:",e);
     alert("❌ Ocurrió un error al reiniciar la tienda:\n\n"+(e.message||e));
-  }finally{
     resetInProgress=false;
   }
 }
-
 const _renderProductsAdmin=renderProductsAdmin;
 renderProductsAdmin=function(){_renderProductsAdmin();renderProductsAdminCloudGuard()};
 
