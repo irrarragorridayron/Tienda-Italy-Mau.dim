@@ -305,7 +305,6 @@ let ipvMovementType="entry";
 let ipvDailyReports=loadData("italy_ipv_daily",[]);
 let ipvMovements=loadData("italy_ipv_movements",[]);
 let capitalInitial=Number(loadData("italy_capital_initial",0))||0;
-let initialStoreCutoff=localStorage.getItem("italy_initial_store_cutoff_v1")||"";
 
 if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
 
@@ -943,7 +942,7 @@ async function cloudLoadAll(){
       }))
     }));
 
-    const allCloudMovements=(mr.data||[]).map(m=>({
+    ipvMovements=(mr.data||[]).map(m=>({
       id:m.id,
       date:m.created_at,
       type:m.type,
@@ -951,11 +950,6 @@ async function cloudLoadAll(){
       quantity:Number(m.quantity),
       userId:m.user_id
     }));
-    // Once the store has been initialized, this device must never resurrect
-    // inventory movements that existed before the initial start date.
-    ipvMovements=initialStoreCutoff
-      ? allCloudMovements.filter(m=>String(m.date||"")>=String(initialStoreCutoff))
-      : allCloudMovements;
 
     capitalInitial=Number(cr.data?.capital_initial)||0;
 
@@ -1337,8 +1331,8 @@ function renderProductsAdminCloudGuard(){
 }
 
 /* ===== PUESTA A CERO INICIAL (UNA SOLA VEZ) ===== */
-function clearInitialLocalData(cutoff){
-  cart=[]; pendingSales=[]; syncOperations=[];
+function clearInitialLocalData(){
+  cart=[]; pendingSales=[]; syncOperations=syncOperations.filter(o=>o.type!=="reset");
   products=[]; sales=[]; ipvMovements=[]; ipvDailyReports=[]; capitalInitial=0;
   localStorage.removeItem("italy_products");
   localStorage.removeItem("italy_sales");
@@ -1346,10 +1340,6 @@ function clearInitialLocalData(cutoff){
   localStorage.removeItem("italy_ipv_movements");
   localStorage.removeItem("italy_ipv_daily");
   localStorage.setItem("italy_capital_initial","0");
-  if(cutoff){
-    initialStoreCutoff=cutoff;
-    localStorage.setItem("italy_initial_store_cutoff_v1",cutoff);
-  }
   saveSyncOperations();
 }
 
@@ -1362,33 +1352,7 @@ async function initialStoreSetupAdmin(){
     resetInProgress=true; resetProtectionUntil=Date.now()+15000; if(cloud)cloud.removeAllChannels();
     const {error}=await cloud.rpc("reset_shop_data");
     if(error){alert("❌ Supabase rechazó la puesta a cero.\n\n"+(error.message||"Sin mensaje")+"\nCódigo: "+(error.code||"sin código"));subscribeCloud();return}
-
-    // El RPC puede limpiar ventas/movimientos/capital, pero para el arranque
-    // inicial necesitamos además dejar TODOS los acumuladores IPV y la
-    // existencia de cada producto en cero. Así el teléfono del vendedor no
-    // vuelve a recibir un IPV antiguo desde Supabase al sincronizar.
-    const {data:resetProducts,error:resetProductsReadError}=await cloud.from("products").select("id");
-    if(resetProductsReadError){
-      alert("❌ La puesta a cero no pudo verificar los productos.\n\n"+(resetProductsReadError.message||"Error desconocido"));
-      subscribeCloud();return;
-    }
-    for(const rp of (resetProducts||[])){
-      const {error:resetProductError}=await cloud.from("products").update({
-        stock:0,
-        ipv_initial_stock:0,
-        ipv_entries:0,
-        ipv_sales:0,
-        ipv_other_exits:0,
-        updated_at:new Date().toISOString()
-      }).eq("id",rp.id);
-      if(resetProductError){
-        alert("❌ No se pudo poner en cero el producto "+rp.id+".\n\n"+(resetProductError.message||"Error desconocido"));
-        subscribeCloud();return;
-      }
-    }
-
-    const initialCutoff=new Date().toISOString();
-    clearInitialLocalData(initialCutoff); localStorage.setItem("italy_initial_store_setup_v1","done");
+    clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
     const loaded=await cloudLoadAll();
     if(!loaded){alert("⚠️ La puesta a cero se realizó en Supabase, pero no se pudo recargar el estado. Mantén Internet y vuelve a abrir la app.");subscribeCloud();return}
     const check={sales:sales.length,movements:ipvMovements.length,stock:products.filter(p=>Number(p.stock)!==0).length,ipv:products.filter(p=>Number(p.ipvInitialStock)!==0||Number(p.ipvEntries)!==0||Number(p.ipvSales)!==0||Number(p.ipvOtherExits)!==0).length,capital:Number(capitalInitial)||0};
@@ -1409,17 +1373,8 @@ async function prepareInitialDevice(){
   if(sr.error||mr.error||cr.error){alert("No se pudo verificar el estado inicial de Supabase. No se borró nada de este teléfono.");return}
   const capital=Number(cr.data?.capital_initial)||0;
   if((sr.count||0)!==0||(mr.count||0)!==0||capital!==0){alert("La tienda compartida todavía no está en cero.\n\nPrimero el administrador debe ejecutar «Hacer puesta a cero inicial».\n\nNo se borró nada de este teléfono.");return}
-
-  // Verificar también el IPV y la existencia real de los productos en la nube.
-  // Esto evita preparar el teléfono con un catálogo que todavía conserve
-  // acumuladores IPV antiguos.
-  const {data:cloudProducts,error:cloudProductsError}=await cloud.from("products").select("id,stock,ipv_initial_stock,ipv_entries,ipv_sales,ipv_other_exits");
-  if(cloudProductsError){alert("No se pudo verificar el inventario de Supabase. No se borró nada de este teléfono.");return}
-  const oldInventory=(cloudProducts||[]).filter(p=>Number(p.stock)!==0||Number(p.ipv_initial_stock)!==0||Number(p.ipv_entries)!==0||Number(p.ipv_sales)!==0||Number(p.ipv_other_exits)!==0);
-  if(oldInventory.length){alert("La tienda compartida todavía conserva existencias o IPV antiguos en Supabase.\n\nEl administrador debe volver a ejecutar la puesta a cero inicial antes de preparar este teléfono.\n\nNo se borró nada de este teléfono.");return}
   if(!confirm("📱 PREPARAR ESTE TELÉFONO\n\nSe eliminarán únicamente de este dispositivo las ventas antiguas, ventas offline pendientes, movimientos e historial IPV, capital local y colas de reinicios antiguos.\n\nNo se modificará Supabase.\n\n¿Continuar?"))return;
-  const deviceCutoff=initialStoreCutoff||new Date().toISOString();
-  clearInitialLocalData(deviceCutoff); localStorage.setItem("italy_initial_store_setup_v1","done");
+  clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
   const loaded=await cloudLoadAll(); updateInitialDeviceCard();
   alert(loaded?"✅ Este teléfono está preparado. Ya puede comenzar a registrar operaciones nuevas.":"⚠️ El teléfono fue limpiado, pero no se pudo recargar Supabase. Mantén Internet y vuelve a abrir la app.");
 }
@@ -1434,269 +1389,123 @@ const _renderProductsAdmin=renderProductsAdmin;
 renderProductsAdmin=function(){_renderProductsAdmin();renderProductsAdminCloudGuard()};
 
 updateOfflineStatus();
-initCloud();
-</script>
 
-<script>
 /* ================================================================
-   MODO ESTABILIZACIÓN — SOLO ADMINISTRADOR / SUPABASE ONLINE
-   Se desactiva temporalmente la lógica offline, colas y realtime.
-   La base de datos de Supabase queda como única fuente de verdad.
+   MODO ESTABLE — ADMINISTRADOR / OFFLINE LOCAL
+   Supabase queda reservado para una futura sincronización con vendedor.
+   Durante esta etapa, los datos operativos viven únicamente en el teléfono.
    ================================================================ */
 (function(){
-  // Evitar que una versión/caché anterior del PWA vuelva a ejecutar lógica
-  // offline mientras estabilizamos la persistencia de Supabase.
-  try{
-    localStorage.removeItem("italy_pending_sales");
-    localStorage.removeItem("italy_sync_operations_v1");
-  }catch(e){}
-
-  // No usar Realtime durante esta fase. Así una lectura antigua no puede
-  // reemplazar en pantalla un producto recién creado.
-  subscribeCloud=function(){
-    if(cloud){try{cloud.removeAllChannels()}catch(e){}}
+  const loadLocal=()=>{
+    try{products=loadData("italy_products",[])}catch(e){products=[]}
+    try{sales=loadData("italy_sales",[])}catch(e){sales=[]}
+    try{ipvMovements=loadData("italy_ipv_movements",[])}catch(e){ipvMovements=[]}
+    try{ipvDailyReports=loadData("italy_ipv_daily",[])}catch(e){ipvDailyReports=[]}
+    try{capitalInitial=Number(loadData("italy_capital_initial",0))||0}catch(e){capitalInitial=0}
+    if(!Array.isArray(products))products=[];
+    if(!Array.isArray(sales))sales=[];
+    if(!Array.isArray(ipvMovements))ipvMovements=[];
+    if(!Array.isArray(ipvDailyReports))ipvDailyReports=[];
+    ensureIPVData();
   };
+  const renderAll=()=>{
+    renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();updateOfflineStatus();
+  };
+
+  // Supabase deja de ser fuente de verdad durante la etapa de estabilización.
+  cloudLoadAll=async function(){loadLocal();renderAll();return true};
+  subscribeCloud=function(){if(cloud){try{cloud.removeAllChannels()}catch(e){}}};
+  syncPendingSales=async function(){return true};
+  syncPendingOperations=async function(){return true};
 
   updateOfflineStatus=function(){
     const el=document.getElementById("offlineStatus");
     if(!el)return;
-    if(!navigator.onLine){
-      el.className="offline-status offline";
-      el.textContent="📴 Sin Internet · Administración requiere conexión";
-    }else{
-      el.className="offline-status";
-      el.textContent="☁️ Administrador · Supabase conectado";
-    }
+    el.className="offline-status offline";
+    el.textContent="📱 Modo offline · Datos guardados en este teléfono";
     el.style.display="block";
   };
 
-  // Solo administrador. Un vendedor no puede entrar en esta versión.
-  handleCloudSession=async function(session){
-    cloudUser=session.user;
-    if(!navigator.onLine){
-      cloudMessage("Conecta Internet para acceder al modo administrador.");
-      try{await cloud.auth.signOut()}catch(e){}
-      return false;
-    }
-
-    const result=await cloud.from("profiles").select("*").eq("id",cloudUser.id).maybeSingle();
-    if(result.error){
-      cloudMessage("No se pudo verificar el perfil del administrador: "+(result.error.message||"Error desconocido"));
-      try{await cloud.auth.signOut()}catch(e){}
-      return false;
-    }
-    if(!result.data || normalizeRole(result.data.role)!=="admin"){
-      cloudMessage("Esta versión está habilitada únicamente para la cuenta Administrador.");
-      try{await cloud.auth.signOut()}catch(e){}
-      return false;
-    }
-
-    cloudProfile={...result.data,role:"admin"};
-    try{
-      localStorage.setItem(CLOUD_USER_KEY,JSON.stringify({id:cloudUser.id,email:cloudUser.email}));
-      localStorage.setItem(CLOUD_PROFILE_KEY,JSON.stringify({userId:cloudUser.id,profile:cloudProfile}));
-    }catch(e){}
-
-    showAppForUser();
-    refreshAdminUI();
-    await cloudLoadAll();
-    updateOfflineStatus();
-    return true;
-  };
-
-  // Inicio limpio: no permite entrar usando una sesión/copia offline antigua.
-  initCloud=async function(){
-    if(!isCloudConfigured()){
-      cloudMessage("Faltan las claves de Supabase en index.html.");
-      showLogin();
-      return;
-    }
-    if(!navigator.onLine){
-      cloudMessage("Conecta Internet para iniciar la sesión del administrador.");
-      showLogin();
-      return;
-    }
-    cloudConfigured=true;
-    try{
-      if(!window.supabase) await loadSupabaseLibrary();
-      cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-      const {data,error}=await cloud.auth.getSession();
-      if(error){cloudMessage(error.message);showLogin();return;}
-      if(data.session) await handleCloudSession(data.session);
-      else showLogin();
-
-      cloud.auth.onAuthStateChange(async(_event,session)=>{
-        if(session){await handleCloudSession(session)}
-        else{
-          cloudUser=null;cloudProfile=null;
-          try{localStorage.removeItem(CLOUD_PROFILE_KEY);localStorage.removeItem(CLOUD_USER_KEY)}catch(e){}
-          showLogin();
-        }
-      });
-    }catch(e){
-      console.error(e);
-      cloudMessage("No se pudo conectar con Supabase: "+(e.message||e));
-      showLogin();
-    }
-  };
-
-  // El modo administrador no usa sincronización offline ni eventos de
-  // reconexión que puedan sobrescribir el estado recién guardado.
-  try{window.removeEventListener("online",window.__italyOldOnlineHandler)}catch(e){}
-  window.addEventListener("offline",()=>updateOfflineStatus());
-
-  syncPendingOperations=async function(){};
-  syncPendingSales=async function(){};
-  queueSyncOperation=function(){return null};
-
-  // Venta: únicamente online y mediante la RPC transaccional de Supabase.
-  completeSale=async function(){
-    if(!cart.length)return;
-    if(!cloudUser||!cloud){alert("Inicia sesión como administrador.");return}
-    if(!navigator.onLine){alert("Esta versión de estabilización requiere Internet para registrar ventas.");return}
-    for(const i of cart){
-      const p=getProduct(i.productId);
-      if(!p||Number(p.stock)<i.quantity){alert("No hay suficiente inventario.");return;}
-    }
-    const payment=document.getElementById("paymentMethod").value;
-    const items=cart.map(i=>({productId:i.productId,quantity:i.quantity}));
-    const {data:saleId,error}=await cloud.rpc("register_sale",{p_payment:payment,p_items:items});
-    if(error){alert("No se pudo registrar la venta en Supabase:\n\n"+(error.message||"Error desconocido"));return}
-    cart=[];
-    closePaymentModal();
-    cloudLoadSequence++;
-    await cloudLoadAll();
-    document.getElementById("successDetails").innerHTML=`Venta registrada correctamente.<br><strong>${esc(String(saleId).slice(0,8))}</strong>`;
-    document.getElementById("successModal").classList.add("show");
-  };
-
-  // Movimiento IPV: únicamente online y guardado transaccional en Supabase.
-  saveIPVMovement=async function(){
-    if(!navigator.onLine){alert("Esta función requiere Internet.");return}
-    if(!cloudUser||!cloud){alert("Inicia sesión como administrador.");return}
-    const p=getProduct(document.getElementById("ipvMovementProduct").value);
-    const q=Math.floor(Number(document.getElementById("ipvMovementQuantity").value));
-    if(!p){alert("Selecciona un producto.");return}
-    if(!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}
-    const {error}=await cloud.rpc("inventory_move",{p_product_id:p.id,p_quantity:q,p_type:ipvMovementType});
-    if(error){alert("No se pudo registrar el movimiento: "+(error.message||"Error desconocido"));return}
-    closeIPVMovementModal();
-    cloudLoadSequence++;
-    await cloudLoadAll();
-  };
-
-  // Capital inicial: fuente única Supabase.
-  saveInitialCapital=async function(){
-    if(!navigator.onLine){alert("El capital inicial requiere Internet.");return}
-    if(!isAdmin()){alert("Solo el administrador puede cambiar el capital inicial.");return}
-    const v=Number(document.getElementById("capitalInitialInput").value);
-    if(!Number.isFinite(v)||v<0){alert("Introduce un capital inicial válido.");return}
-    const {error}=await cloud.rpc("set_initial_capital",{p_amount:v});
-    if(error){alert("No se pudo guardar el capital: "+(error.message||"Error desconocido"));return}
-    cloudLoadSequence++;
-    await cloudLoadAll();
-    alert("✅ Capital inicial guardado correctamente en Supabase.");
-  };
-
-  // Producto: insert/update/delete directo en Supabase. Se invalida cualquier
-  // lectura que estuviera pendiente antes de escribir para evitar el bug de
-  // "se crea y luego desaparece".
-  saveProduct=async function(){
-    if(!cloudUser||!cloud){alert("Inicia sesión como administrador.");return}
-    if(!isAdmin()){alert("Solo el administrador puede administrar productos.");return}
-    if(!navigator.onLine){alert("La administración de productos requiere Internet.");return}
-
+  // Productos: una sola ruta, siempre local.
+  saveProduct=function(){
     const id=document.getElementById("editingProductId").value;
     const name=document.getElementById("productName").value.trim();
     const price=Number(document.getElementById("productPrice").value);
     const cv=document.getElementById("productCost").value;
     const cost=cv===""?0:Number(cv);
     const stock=Math.floor(Number(document.getElementById("productStock").value));
-    const unit=document.getElementById("productUnit").value;
+    const unit=document.getElementById("productUnit").value||"unidad";
     if(!name){alert("Escribe el nombre del producto.");return}
     if(!Number.isFinite(price)||price<0){alert("Introduce un precio válido.");return}
-    if(!Number.isFinite(cost)||cost<0){alert("Introduce un costo válido.");return}
+    if(!Number.isFinite(cost)||cost<0){alert("Introduce un costo válido o déjalo vacío.");return}
     if(!Number.isFinite(stock)||stock<0){alert("Introduce una cantidad válida.");return}
-
-    cloudLoadSequence++;
-    try{
-      if(!id){
-        const payload={
-          id:generateUUID(),name,price,cost,stock,unit,icon:"🛒",
-          ipv_initial_stock:stock,ipv_entries:0,ipv_sales:0,ipv_other_exits:0
-        };
-        const {data:created,error}=await cloud.from("products").insert(payload).select("*").single();
-        if(error){alert("No se pudo crear el producto en Supabase:\n\n"+(error.message||"Error desconocido")+(error.code?"\nCódigo: "+error.code:""));return}
-        products.push({
-          id:created.id,name:created.name,price:Number(created.price)||0,cost:Number(created.cost)||0,
-          stock:Number(created.stock)||0,unit:created.unit||"unidad",icon:created.icon||"🛒",
-          ipvInitialStock:Number(created.ipv_initial_stock)||0,ipvEntries:Number(created.ipv_entries)||0,
-          ipvSales:Number(created.ipv_sales)||0,ipvOtherExits:Number(created.ipv_other_exits)||0
-        });
-        saveData("italy_products",products);
-        closeProductModal();
-        renderProductsAdmin();renderSaleProducts();renderInventory();
-        alert("✅ Producto creado y confirmado en Supabase.");
-        return;
-      }
-
-      const old=getProduct(id);
-      if(!old){alert("El producto ya no está cargado. Recarga la aplicación.");return}
-      const {error}=await cloud.from("products").update({name,price,cost,unit,updated_at:new Date().toISOString()}).eq("id",id);
-      if(error){alert("No se pudo actualizar el producto: "+(error.message||"Error desconocido"));return}
-      const diff=stock-Number(old.stock||0);
-      if(diff!==0){
-        const mv=await cloud.rpc("inventory_move",{p_product_id:id,p_quantity:Math.abs(diff),p_type:diff>0?"entry":"exit"});
-        if(mv.error){alert("El producto se actualizó, pero no se pudo ajustar la existencia: "+(mv.error.message||"Error desconocido"));return}
-      }
-      closeProductModal();
-      await cloudLoadAll();
-      alert("✅ Producto actualizado correctamente.");
-    }catch(e){alert("Ocurrió un error: "+(e.message||e))}
+    if(id){
+      const p=getProduct(id);if(!p){alert("El producto ya no existe.");return}
+      const old=Number(p.stock)||0;
+      const diff=stock-old;
+      p.name=name;p.price=price;p.cost=cost;p.stock=stock;p.unit=unit;
+      if(diff>0)p.ipvEntries=(Number(p.ipvEntries)||0)+diff;
+      if(diff<0)p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+Math.abs(diff);
+      if(diff!==0)ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:diff>0?"entry":"exit",productId:p.id,quantity:Math.abs(diff)});
+    }else{
+      products.push({id:generateId(),name,price,cost,stock,unit,icon:"🛒",ipvInitialStock:stock,ipvEntries:0,ipvSales:0,ipvOtherExits:0});
+    }
+    saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);
+    closeProductModal();renderProductsAdmin();renderSaleProducts();renderInventory();renderIPVDailyHistory();
   };
 
-  deleteProduct=async function(id){
-    if(!navigator.onLine){alert("La administración de productos requiere Internet.");return}
-    if(!isAdmin()){alert("Solo el administrador puede eliminar productos.");return}
+  deleteProduct=function(id){
     const p=getProduct(id);if(!p)return;
     if(!confirm(`¿Eliminar "${p.name}"?`))return;
-    cloudLoadSequence++;
-    const {error}=await cloud.from("products").delete().eq("id",id);
-    if(error){alert("No se pudo eliminar el producto. Si tiene ventas relacionadas, Supabase puede impedir su eliminación.\n\n"+(error.message||"Error desconocido"));return}
-    products=products.filter(x=>x.id!==id);
-    cart=cart.filter(x=>x.productId!==id);
-    saveData("italy_products",products);
-    renderProductsAdmin();renderSaleProducts();renderInventory();renderCart();
-    alert("✅ Producto eliminado correctamente.");
+    products=products.filter(x=>x.id!==id);cart=cart.filter(x=>x.productId!==id);
+    saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();renderInventory();renderCart();
   };
 
-  // Ocultar herramientas creadas para el modo multiusuario/offline.
-  function cleanAdminOnlyUI(){
-    const reset=document.getElementById("adminToolsCard");
-    const initial=document.getElementById("initialDeviceCard");
-    if(reset)reset.style.display="none";
-    if(initial)initial.style.display="none";
-    const importBtn=document.getElementById("importCloudBtn");
-    if(importBtn)importBtn.remove();
-    const offline=document.getElementById("offlineStatus");
-    if(offline)offline.style.display="block";
-    const subtitle=document.querySelector("header p");
-    if(subtitle)subtitle.textContent="Administración · Supabase";
-    const authHint=document.querySelector("#authOverlay .hint");
-    if(authHint)authHint.innerHTML="Acceso exclusivo para la cuenta <strong>Administrador</strong>. No se permite el acceso de vendedores en esta versión.";
-  }
+  // Ventas: siempre locales y disponibles sin Internet.
+  completeSale=function(){
+    if(!cart.length)return;
+    for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert("No hay suficiente inventario.");return}}
+    const items=cart.map(i=>{const p=getProduct(i.productId);return{productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:Number(p.cost)||0,subtotal:Number(p.price)*i.quantity}});
+    cart.forEach(i=>{const p=getProduct(i.productId);p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"sale",productId:p.id,quantity:i.quantity});});
+    const total=items.reduce((s,i)=>s+i.subtotal,0),costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
+    const sale={id:generateId(),date:new Date().toISOString(),payment:document.getElementById("paymentMethod").value,items,total,costTotal,profit:total-costTotal};
+    sales.unshift(sale);cart=[];
+    saveData("italy_products",products);saveData("italy_sales",sales);saveData("italy_ipv_movements",ipvMovements);
+    closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
+    document.getElementById("successDetails").innerHTML=`Total: <strong>${money(total)}</strong><br>Pago con: ${esc(sale.payment)}<br><strong>📱 Guardada en este teléfono.</strong>`;
+    document.getElementById("successModal").classList.add("show");
+  };
 
-  const oldShowAppForUser=showAppForUser;
-  showAppForUser=function(){oldShowAppForUser();cleanAdminOnlyUI();refreshAdminUI()};
+  saveIPVMovement=function(){
+    const p=getProduct(document.getElementById("ipvMovementProduct").value);
+    const q=Math.floor(Number(document.getElementById("ipvMovementQuantity").value));
+    if(!p){alert("Selecciona un producto.");return}
+    if(!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}
+    if(ipvMovementType==="exit"&&q>Number(p.stock||0)){alert("La salida no puede ser mayor que la existencia actual.");return}
+    if(ipvMovementType==="entry"){p.stock=(Number(p.stock)||0)+q;p.ipvEntries=(Number(p.ipvEntries)||0)+q}
+    else{p.stock=(Number(p.stock)||0)-q;p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+q}
+    ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:ipvMovementType,productId:p.id,quantity:q});
+    saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);closeIPVMovementModal();renderInventory();renderSaleProducts();renderIPVDailyHistory();
+  };
 
-  // El reinicio no forma parte de esta versión de estabilización.
-  initialStoreSetupAdmin=async function(){alert("El reinicio está temporalmente desactivado durante la estabilización. Primero vamos a comprobar que productos, inventario, ventas y capital permanezcan correctamente en Supabase.")};
-  prepareInitialDevice=async function(){alert("Esta función está temporalmente desactivada. La versión actual trabaja únicamente con el administrador y Supabase online.")};
+  saveInitialCapital=function(){
+    const v=Number(document.getElementById("capitalInitialInput").value);
+    if(!Number.isFinite(v)||v<0){alert("Introduce un capital inicial válido.");return}
+    capitalInitial=v;saveData("italy_capital_initial",capitalInitial);renderCapital();alert("Capital inicial guardado correctamente en este teléfono.");
+  };
 
-  cleanAdminOnlyUI();
-  updateOfflineStatus();
+  // Evitar que operaciones antiguas de sincronización modifiquen el estado local.
+  try{pendingSales=[];savePendingSales()}catch(e){}
+  try{syncOperations=[];saveSyncOperations()}catch(e){}
+
+  // Si el usuario ya tiene una sesión de administrador guardada, se conserva.
+  // Si no hay sesión, la app seguirá mostrando el acceso normal para validarlo
+  // una vez; después podrá abrirse sin Internet usando el perfil almacenado.
+  window.addEventListener("offline",()=>{loadLocal();renderAll()});
+  loadLocal();renderAll();
 })();
-</script>
 
+initCloud();
+</script>
 </body>
 </html>
