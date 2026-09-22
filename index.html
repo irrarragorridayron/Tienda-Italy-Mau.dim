@@ -746,7 +746,21 @@ function cloudMessage(msg){
 function isCloudConfigured(){
   return SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("PEGA_AQUI") && SUPABASE_ANON_KEY.length>20 && !SUPABASE_ANON_KEY.includes("PEGA_AQUI");
 }
-function isAdmin(){return cloudProfile && cloudProfile.role==="admin"}
+function normalizeRole(role){
+  const r=String(role||"").trim().toLowerCase();
+  return (r==="admin"||r==="administrador"||r==="administrator")?"admin":"vendedor";
+}
+function isAdmin(){return !!cloudUser && normalizeRole(cloudProfile?.role)==="admin"}
+function refreshAdminUI(){
+  const admin=isAdmin();
+  const tools=document.getElementById("adminToolsCard");
+  const addBtn=document.getElementById("adminAddProductBtn");
+  if(tools)tools.style.display=admin?"block":"none";
+  if(addBtn) addBtn.style.display=admin?"block":"none";
+  const roleEl=document.getElementById("userRole");
+  if(roleEl)roleEl.textContent=admin?"Administrador":"Vendedor";
+}
+
 function showAppForUser(){
   document.getElementById("authOverlay").style.display="none";
   const bar=document.getElementById("userBar");bar.style.display="flex";
@@ -976,8 +990,15 @@ async function handleCloudSession(session){
     }catch(e){}
   }
 
+  // Normalize and persist the verified role so a reset/reload cannot make the
+  // administrator controls disappear just because the local profile was stale.
+  if(profile){
+    profile={...profile,role:normalizeRole(profile.role)};
+    try{localStorage.setItem(CLOUD_PROFILE_KEY,JSON.stringify({userId:cloudUser.id,profile}))}catch(e){}
+  }
   cloudProfile=profile||{name:cloudUser.email,role:"vendedor"};
   showAppForUser();
+  refreshAdminUI();
 
   // Offline startup: render the local snapshot immediately.
   await cloudLoadAll();
@@ -1059,26 +1080,71 @@ saveInitialCapital=async function(){
 
 saveProduct=async function(){
   if(!navigator.onLine){alert("La administración de productos requiere Internet.");return}
+  if(!cloudUser || !cloud){alert("No hay una sesión activa de Supabase.");return}
+
+  // Re-read the profile when the UI lost the cached role after a reset/reload.
+  if(!isAdmin()){
+    try{
+      const r=await cloud.from("profiles").select("*").eq("id",cloudUser.id).maybeSingle();
+      if(!r.error && r.data){
+        cloudProfile={...r.data,role:normalizeRole(r.data.role)};
+        try{localStorage.setItem(CLOUD_PROFILE_KEY,JSON.stringify({userId:cloudUser.id,profile:cloudProfile}))}catch(e){}
+        showAppForUser();refreshAdminUI();
+      }
+    }catch(e){}
+  }
   if(!isAdmin()){alert("Solo el administrador puede administrar productos.");return}
+
   const id=document.getElementById("editingProductId").value;
   const name=document.getElementById("productName").value.trim();
   const price=Number(document.getElementById("productPrice").value);
-  const cv=document.getElementById("productCost").value;const cost=cv===""?0:Number(cv);
+  const cv=document.getElementById("productCost").value;
+  const cost=cv===""?0:Number(cv);
   const stock=Math.floor(Number(document.getElementById("productStock").value));
   const unit=document.getElementById("productUnit").value;
+
   if(!name){alert("Escribe el nombre del producto.");return}
   if(!Number.isFinite(price)||price<0||!Number.isFinite(cost)||cost<0||!Number.isFinite(stock)||stock<0){alert("Revisa los datos del producto.");return}
-  if(id){
-    const old=getProduct(id);if(!old)return;
-    const {error}=await cloud.from("products").update({name,price,cost,unit,updated_at:new Date().toISOString()}).eq("id",id);
-    if(error){alert(error.message);return}
-    const diff=stock-Number(old.stock||0);
-    if(diff!==0){const mv=await cloud.rpc("inventory_move",{p_product_id:id,p_quantity:Math.abs(diff),p_type:diff>0?"entry":"exit"});if(mv.error){alert(mv.error.message);return}}
-  }else{
-    const {error}=await cloud.from("products").insert({name,price,cost,stock,unit,icon:"🛒",ipv_initial_stock:stock});
-    if(error){alert(error.message);return}
+
+  try{
+    if(id){
+      const old=getProduct(id);
+      if(!old){alert("El producto ya no está disponible. Recarga el inventario.");await cloudLoadAll();return}
+      const {error}=await cloud.from("products").update({
+        name,price,cost,unit,updated_at:new Date().toISOString()
+      }).eq("id",id);
+      if(error){alert("No se pudo actualizar el producto: "+error.message);return}
+
+      const diff=stock-Number(old.stock||0);
+      if(diff!==0){
+        const mv=await cloud.rpc("inventory_move",{
+          p_product_id:id,p_quantity:Math.abs(diff),p_type:diff>0?"entry":"exit"
+        });
+        if(mv.error){alert("El producto se actualizó, pero no se pudo ajustar la existencia: "+mv.error.message);await cloudLoadAll();return}
+      }
+    }else{
+      // New products are created directly in Supabase. The server generates the UUID.
+      const {data:created,error}=await cloud.from("products").insert({
+        name,price,cost,stock,unit,icon:"🛒",ipv_initial_stock:stock,
+        ipv_entries:0,ipv_sales:0,ipv_other_exits:0
+      }).select("*").single();
+      if(error){
+        alert("No se pudo crear el producto en Supabase:\n\n"+error.message+
+          (error.code?"\n\nCódigo: "+error.code:"")+
+          (error.details?"\n\nDetalles: "+error.details:""));
+        return;
+      }
+      if(created) console.log("Producto creado:",created.id);
+    }
+
+    closeProductModal();
+    await cloudLoadAll();
+    renderProductsAdmin();
+    refreshAdminUI();
+  }catch(e){
+    console.error("Error guardando producto:",e);
+    alert("Ocurrió un error al guardar el producto: "+(e.message||e));
   }
-  closeProductModal();await cloudLoadAll();
 };
 
 deleteProduct=async function(id){
@@ -1105,13 +1171,20 @@ async function importLocalProductsToCloud(){
 }
 
 function renderProductsAdminCloudGuard(){
-  const old=document.querySelector('#productsAdmin')?.parentElement; if(!old)return;
-  const tools=document.getElementById("adminToolsCard");
-  const addBtn=document.getElementById("adminAddProductBtn");
-  if(tools) tools.style.display=isAdmin()?"block":"none";
-  if(addBtn) addBtn.style.display=isAdmin()?"block":"none";
-  if(isAdmin() && !document.getElementById('importCloudBtn')){
-    const b=document.createElement('button');b.id='importCloudBtn';b.className='secondary';b.style='width:100%;margin-top:8px';b.textContent='☁️ Importar productos locales a la nube';b.onclick=importLocalProductsToCloud;old.insertBefore(b,document.getElementById('productsAdmin'));
+  const old=document.querySelector('#productsAdmin')?.parentElement;
+  refreshAdminUI();
+  if(!old)return;
+  const admin=isAdmin();
+  const existing=document.getElementById('importCloudBtn');
+  if(admin && !existing){
+    const b=document.createElement('button');
+    b.id='importCloudBtn';b.className='secondary';
+    b.style='width:100%;margin-top:8px';
+    b.textContent='☁️ Importar productos locales a la nube';
+    b.onclick=importLocalProductsToCloud;
+    old.insertBefore(b,document.getElementById('productsAdmin'));
+  }else if(!admin && existing){
+    existing.remove();
   }
 }
 
@@ -1146,6 +1219,8 @@ async function resetAllStoreData(){
   }
 
   try{
+    resetInProgress=true;
+    resetProtectionUntil=Date.now()+10000;
     // Stop realtime callbacks while the reset is being applied.
     if(cloud) cloud.removeAllChannels();
 
@@ -1230,6 +1305,7 @@ async function resetAllStoreData(){
 
     subscribeCloud();
 
+    refreshAdminUI();
     alert(
       "✅ Todos los datos fueron reiniciados correctamente.\n\n"+
       "Los productos permanecen en la tienda, pero su existencia e IPV están en 0."
@@ -1239,6 +1315,10 @@ async function resetAllStoreData(){
     console.error("ERROR REINICIO:",e);
     alert("❌ Ocurrió un error al reiniciar los datos:\n\n"+(e.message||e));
     subscribeCloud();
+  }finally{
+    resetInProgress=false;
+    resetProtectionUntil=0;
+    refreshAdminUI();
   }
 }
 
