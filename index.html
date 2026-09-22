@@ -884,10 +884,20 @@ async function resetAllStoreData(){
 
   try{
     if(cloudUser && cloud){
-      const {error}=await cloud.rpc("reset_shop_data");
+      const {data:resetResult,error}=await cloud.rpc("reset_shop_data",{});
       if(error){
-        console.error(error);
-        alert("No se pudo reiniciar la tienda en Supabase.\n\nAsegúrate de haber creado la función SQL \"reset_shop_data\" y de tener los permisos correspondientes.");
+        console.error("ERROR reset_shop_data:",error);
+        const code=error.code||"sin código";
+        const message=error.message||"Sin mensaje";
+        const details=error.details||"Sin detalles";
+        const hint=error.hint||"Sin información adicional";
+        alert(
+          "❌ Supabase rechazó el reinicio.\n\n"+
+          "Mensaje: "+message+"\n\n"+
+          "Código: "+code+"\n\n"+
+          "Detalles: "+details+"\n\n"+
+          "Hint: "+hint
+        );
         return;
       }
 
