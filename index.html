@@ -175,9 +175,14 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <button id="adminAddProductBtn" class="primary" onclick="openProductModal()">➕ Agregar producto</button>
 
 <div id="adminToolsCard" class="card" style="margin-top:14px;display:none">
-  <h3 style="margin-top:0">🔐 Administración</h3>
-  <div class="hint">Esta opción reinicia los datos compartidos de la tienda. Se eliminan las ventas y movimientos, se reinicia el capital y los productos quedan con existencia 0.</div>
-  <button class="danger" style="width:100%;padding:14px" onclick="resetAllStoreData()">🗑️ Reiniciar todos los datos</button>
+  <h3 style="margin-top:0">🔐 Puesta a cero inicial</h3>
+  <div class="hint">Úsala <strong>una sola vez</strong>, antes de comenzar a trabajar. Borra las ventas, movimientos, capital e historial IPV compartidos y deja los productos preparados para comenzar desde cero. Después de realizarla, no se ejecutará ningún reinicio automático.</div>
+  <button class="danger" style="width:100%;padding:14px" onclick="initialStoreSetupAdmin()">🧹 Hacer puesta a cero inicial</button>
+</div>
+<div id="initialDeviceCard" class="card" style="margin-top:14px">
+  <h3 style="margin-top:0">🚀 Inicio de la tienda</h3>
+  <div class="hint">Después de que el administrador haga la puesta a cero inicial, pulsa este botón en <strong>cada teléfono</strong> para eliminar cualquier venta o cola offline antigua de ese dispositivo.</div>
+  <button class="secondary" style="width:100%;padding:14px" onclick="prepareInitialDevice()">📱 Preparar este teléfono para comenzar</button>
 </div>
 
 <br>
@@ -657,6 +662,8 @@ const SYNC_OPS_KEY="italy_sync_operations_v1";
 let syncOperations=[];
 let syncOperationsRunning=false;
 try{syncOperations=JSON.parse(localStorage.getItem(SYNC_OPS_KEY)||"[]");if(!Array.isArray(syncOperations))syncOperations=[]}catch(e){syncOperations=[]}
+syncOperations=syncOperations.filter(o=>o && o.type!=="reset");
+saveSyncOperations();
 function saveSyncOperations(){try{localStorage.setItem(SYNC_OPS_KEY,JSON.stringify(syncOperations))}catch(e){console.warn("No se pudo guardar la cola de sincronización",e)}}
 function queueSyncOperation(type,payload={}){
   // Never enqueue the same logical operation twice. This is especially important
@@ -665,12 +672,8 @@ function queueSyncOperation(type,payload={}){
     const existing=syncOperations.find(o=>o.type==="product_create" && o.payload?.id===payload.id);
     if(existing){updateOfflineStatus();return existing}
   }
-  // There can be only one pending RESET. A newer offline reset supersedes an
-  // older reset that has not reached Supabase yet; operations created after the
-  // newer reset remain in the queue and will be applied after it.
-  if(type==="reset"){
-    syncOperations=syncOperations.filter(o=>o.type!=="reset");
-  }
+  // Los reinicios no forman parte de la sincronización normal.
+  if(type==="reset"){return null}
   const op={id:"op-"+generateId(),type,createdAt:new Date().toISOString(),userId:cloudUser?.id||null,payload};
   syncOperations.push(op);saveSyncOperations();updateOfflineStatus();return op
 }
@@ -712,18 +715,8 @@ async function syncPendingOperations(){
 
     try{
       if(op.type==="reset"){
-        resetInProgress=true;
-        const {error}=await cloud.rpc("reset_shop_data");
-        if(error){
-          if(isNetworkFailure(error))break;
-          op.syncError=error.message||"Error de sincronización";
-          saveSyncOperations();
-          console.error("Reinicio pendiente requiere revisión:",error);
-          break;
-        }
         syncOperations=syncOperations.filter(x=>x.id!==op.id);
         saveSyncOperations();
-        resetInProgress=false;
         continue;
       }
 
@@ -854,6 +847,7 @@ function refreshAdminUI(){
   if(addBtn) addBtn.style.display=admin?"block":"none";
   const roleEl=document.getElementById("userRole");
   if(roleEl)roleEl.textContent=admin?"Administrador":"Vendedor";
+  updateInitialDeviceCard();
 }
 
 function showAppForUser(){
@@ -1336,164 +1330,60 @@ function renderProductsAdminCloudGuard(){
   }
 }
 
-/* ===== REINICIO TOTAL SOLO ADMINISTRADOR =====
-   El borrado compartido se hace mediante una función SQL/RPC en Supabase.
-   Esto evita intentar borrar tablas sensibles directamente desde el navegador.
-*/
-async function resetAllStoreData(){
-  if(!isAdmin()){
-    alert("Solo el administrador puede reiniciar los datos.");
-    return;
-  }
-
-  const first=confirm(
-    "⚠️ ATENCIÓN\n\nEsto reiniciará los datos compartidos de la tienda:\n"+
-    "• Ventas\n• Movimientos de inventario\n• Capital inicial\n"+
-    "• Existencias y contadores IPV de los productos\n\n"+
-    "Los productos NO se eliminarán.\nEsta acción no se puede deshacer.\n\n¿Quieres continuar?"
-  );
-  if(!first)return;
-
-  const second=prompt('Para confirmar escribe exactamente: REINICIAR');
-  if(second!=="REINICIAR"){
-    alert("Reinicio cancelado.");
-    return;
-  }
-
-  // OFFLINE ADMIN RESET: apply locally now and queue the exact operation for Supabase.
-  if(!navigator.onLine || !cloud){
-    if(!cloudUser){alert("No hay una sesión de administrador guardada en este dispositivo.");return}
-    resetInProgress=true;
-    try{
-      cart=[];
-      products=products.map(p=>({...p,stock:0,ipvInitialStock:0,ipvEntries:0,ipvSales:0,ipvOtherExits:0}));
-      sales=[];
-      ipvMovements=[];
-      ipvDailyReports=[];
-      capitalInitial=0;
-      // Keep pending sales. They are independent offline work and will be synchronized after the reset.
-      localStorage.setItem("italy_products",JSON.stringify(products));
-      localStorage.setItem("italy_sales",JSON.stringify(sales));
-      localStorage.setItem("italy_ipv_movements",JSON.stringify(ipvMovements));
-      localStorage.setItem("italy_ipv_daily",JSON.stringify(ipvDailyReports));
-      localStorage.setItem("italy_capital_initial","0");
-      queueSyncOperation("reset",{preserveProducts:true,resetStock:true,resetIPV:true,resetCapital:true});
-      renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();refreshAdminUI();
-      alert("✅ Reinicio guardado en este teléfono.\n\nLos productos se conservaron y su existencia/IPV quedaron en 0.\n\nCuando vuelva Internet, el reinicio se enviará a Supabase y después se sincronizarán las ventas pendientes.");
-    }finally{resetInProgress=false;updateOfflineStatus()}
-    return;
-  }
-
-  if(!cloudUser || !cloud){
-    alert("No hay una sesión activa de Supabase.");
-    return;
-  }
-
-  try{
-    resetInProgress=true;
-    resetProtectionUntil=Date.now()+10000;
-    // Stop realtime callbacks while the reset is being applied.
-    if(cloud) cloud.removeAllChannels();
-
-    const {data:resetResult,error}=await cloud.rpc("reset_shop_data");
-
-    if(error){
-      console.error("ERROR RESET SHOP:",error);
-      alert(
-        "❌ Supabase rechazó el reinicio.\n\n"+
-        "Mensaje: "+(error.message||"Sin mensaje")+
-        "\n\nCódigo: "+(error.code||"sin código")+
-        "\n\nDetalles: "+(error.details||"sin detalles")+
-        "\n\nHint: "+(error.hint||"sin información adicional")
-      );
-      subscribeCloud();
-      return;
-    }
-
-    console.log("Resultado del reinicio:",resetResult);
-
-    // Clear every local copy, including pending offline sales.
-    cart=[];
-    products=[];
-    sales=[];
-    // Do not erase pending offline sales here; they are real work and must not disappear.
-    ipvMovements=[];
-    ipvDailyReports=[];
-    capitalInitial=0;
-
-    localStorage.removeItem("italy_products");
-    localStorage.removeItem("italy_sales");
-    localStorage.setItem("italy_pending_sales",JSON.stringify(pendingSales));
-    localStorage.removeItem("italy_ipv_movements");
-    localStorage.removeItem("italy_ipv_daily");
-    localStorage.removeItem("italy_capital_initial");
-    try{localStorage.setItem("italy_mau_bootstrap_v7_done","7")}catch(e){}
-
-    // Re-read the authoritative state from Supabase.
-    const loaded=await cloudLoadAll();
-
-    if(!loaded){
-      alert("⚠️ Supabase realizó el reinicio, pero la aplicación no pudo volver a cargar el estado actualizado.");
-      subscribeCloud();
-      return;
-    }
-
-    // Verify the actual state returned by Supabase.
-    const check={
-      sales:sales.length,
-      movements:ipvMovements.length,
-      stock:products.filter(p=>Number(p.stock)!==0).length,
-      ipv:products.filter(p=>
-        Number(p.ipvInitialStock)!==0 ||
-        Number(p.ipvEntries)!==0 ||
-        Number(p.ipvSales)!==0 ||
-        Number(p.ipvOtherExits)!==0
-      ).length,
-      capital:Number(capitalInitial)||0
-    };
-
-    if(check.sales!==0 || check.movements!==0 || check.stock!==0 || check.ipv!==0 || check.capital!==0){
-      console.error("El estado después del reinicio no coincide con cero:",check);
-      alert(
-        "⚠️ Supabase respondió, pero la aplicación detectó datos distintos de cero.\n\n"+
-        "Ventas: "+check.sales+
-        "\nMovimientos: "+check.movements+
-        "\nProductos con stock: "+check.stock+
-        "\nProductos con IPV: "+check.ipv+
-        "\nCapital: "+money(check.capital)
-      );
-      subscribeCloud();
-      return;
-    }
-
-    renderSaleProducts();
-    renderCart();
-    renderInventory();
-    renderSales();
-    renderProductsAdmin();
-    renderIPVDailyHistory();
-    renderCapital();
-
-    syncOperations=syncOperations.filter(o=>o.type!=="reset");
-    saveSyncOperations();
-    subscribeCloud();
-
-    refreshAdminUI();
-    alert(
-      "✅ Todos los datos fueron reiniciados correctamente.\n\n"+
-      "Los productos permanecen en la tienda, pero su existencia e IPV están en 0."
-    );
-
-  }catch(e){
-    console.error("ERROR REINICIO:",e);
-    alert("❌ Ocurrió un error al reiniciar los datos:\n\n"+(e.message||e));
-    subscribeCloud();
-  }finally{
-    resetInProgress=false;
-    resetProtectionUntil=0;
-    refreshAdminUI();
-  }
+/* ===== PUESTA A CERO INICIAL (UNA SOLA VEZ) ===== */
+function clearInitialLocalData(){
+  cart=[]; pendingSales=[]; syncOperations=syncOperations.filter(o=>o.type!=="reset");
+  products=[]; sales=[]; ipvMovements=[]; ipvDailyReports=[]; capitalInitial=0;
+  localStorage.removeItem("italy_products");
+  localStorage.removeItem("italy_sales");
+  localStorage.setItem("italy_pending_sales","[]");
+  localStorage.removeItem("italy_ipv_movements");
+  localStorage.removeItem("italy_ipv_daily");
+  localStorage.setItem("italy_capital_initial","0");
+  saveSyncOperations();
 }
+
+async function initialStoreSetupAdmin(){
+  if(!isAdmin()){alert("Solo el administrador puede hacer la puesta a cero inicial.");return}
+  if(!navigator.onLine||!cloud||!cloudUser){alert("La puesta a cero inicial requiere Internet y una sesión activa del administrador. No se hará ningún reinicio offline.");return}
+  if(!confirm("⚠️ PUESTA A CERO INICIAL\n\nSe eliminarán del sistema compartido todas las ventas, movimientos, capital e historial IPV. Los productos se conservarán.\n\nHaz esto SOLO antes de comenzar a usar la tienda.\n\n¿Continuar?"))return;
+  if(prompt("Para confirmar escribe exactamente: EMPEZAR DE CERO")!=="EMPEZAR DE CERO"){alert("Puesta a cero cancelada.");return}
+  try{
+    resetInProgress=true; resetProtectionUntil=Date.now()+15000; if(cloud)cloud.removeAllChannels();
+    const {error}=await cloud.rpc("reset_shop_data");
+    if(error){alert("❌ Supabase rechazó la puesta a cero.\n\n"+(error.message||"Sin mensaje")+"\nCódigo: "+(error.code||"sin código"));subscribeCloud();return}
+    clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
+    const loaded=await cloudLoadAll();
+    if(!loaded){alert("⚠️ La puesta a cero se realizó en Supabase, pero no se pudo recargar el estado. Mantén Internet y vuelve a abrir la app.");subscribeCloud();return}
+    const check={sales:sales.length,movements:ipvMovements.length,stock:products.filter(p=>Number(p.stock)!==0).length,ipv:products.filter(p=>Number(p.ipvInitialStock)!==0||Number(p.ipvEntries)!==0||Number(p.ipvSales)!==0||Number(p.ipvOtherExits)!==0).length,capital:Number(capitalInitial)||0};
+    if(check.sales||check.movements||check.stock||check.ipv||check.capital){alert("⚠️ La puesta a cero no quedó verificada. Ventas: "+check.sales+" · Movimientos: "+check.movements+" · Stock: "+check.stock+" · IPV: "+check.ipv+" · Capital: "+money(check.capital));subscribeCloud();return}
+    subscribeCloud(); updateInitialDeviceCard();
+    alert("✅ Puesta a cero inicial completada.\n\nLa tienda compartida comienza desde cero.\n\nAhora, en el teléfono del vendedor, pulsa «Preparar este teléfono para comenzar».\n\nA partir de este momento no se ejecutará ningún reinicio automático.");
+  }catch(e){alert("❌ Ocurrió un error:\n\n"+(e.message||e));subscribeCloud()}finally{resetInProgress=false;resetProtectionUntil=0;updateOfflineStatus()}
+}
+
+async function prepareInitialDevice(){
+  if(!cloudUser||!cloud||!navigator.onLine){alert("Conecta Internet e inicia sesión antes de preparar este teléfono.");return}
+  if(localStorage.getItem("italy_initial_store_setup_v1")==="done"){alert("Este teléfono ya fue preparado para el inicio de la tienda. No se borrará ningún dato nuevo.");return}
+  const [sr,mr,cr]=await Promise.all([
+    cloud.from("sales").select("id",{count:"exact",head:true}),
+    cloud.from("inventory_movements").select("id",{count:"exact",head:true}),
+    cloud.from("shop_settings").select("capital_initial").eq("id",1).maybeSingle()
+  ]);
+  if(sr.error||mr.error||cr.error){alert("No se pudo verificar el estado inicial de Supabase. No se borró nada de este teléfono.");return}
+  const capital=Number(cr.data?.capital_initial)||0;
+  if((sr.count||0)!==0||(mr.count||0)!==0||capital!==0){alert("La tienda compartida todavía no está en cero.\n\nPrimero el administrador debe ejecutar «Hacer puesta a cero inicial».\n\nNo se borró nada de este teléfono.");return}
+  if(!confirm("📱 PREPARAR ESTE TELÉFONO\n\nSe eliminarán únicamente de este dispositivo las ventas antiguas, ventas offline pendientes, movimientos e historial IPV, capital local y colas de reinicios antiguos.\n\nNo se modificará Supabase.\n\n¿Continuar?"))return;
+  clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
+  const loaded=await cloudLoadAll(); updateInitialDeviceCard();
+  alert(loaded?"✅ Este teléfono está preparado. Ya puede comenzar a registrar operaciones nuevas.":"⚠️ El teléfono fue limpiado, pero no se pudo recargar Supabase. Mantén Internet y vuelve a abrir la app.");
+}
+
+function updateInitialDeviceCard(){
+  const c=document.getElementById("initialDeviceCard"); if(!c)return;
+  c.style.display=localStorage.getItem("italy_initial_store_setup_v1")==="done"?"none":"block";
+}
+
 
 const _renderProductsAdmin=renderProductsAdmin;
 renderProductsAdmin=function(){_renderProductsAdmin();renderProductsAdminCloudGuard()};
