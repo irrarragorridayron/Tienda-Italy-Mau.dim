@@ -74,6 +74,27 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 
 .auth-overlay{position:fixed;inset:0;background:#111;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}.auth-box{width:100%;max-width:420px;background:#fff;border-radius:20px;padding:24px;box-shadow:0 10px 40px #0008}.auth-logo{font-size:46px;text-align:center}.auth-box h2{margin:8px 0;text-align:center}.auth-box>p{text-align:center;color:#777;font-size:13px}.auth-status{display:none;background:#fff4e5;color:#9a5a00;border-radius:10px;padding:10px;font-size:12px;margin:10px 0}.user-bar{position:fixed;right:10px;top:10px;z-index:40;background:#fff;border-radius:20px;padding:6px 8px 6px 10px;box-shadow:0 2px 10px #0002;font-size:11px;display:flex;gap:6px;align-items:center}.user-bar button{border:0;background:#111;color:#fff;border-radius:10px;padding:5px 8px;font-size:11px}.cloud-badge{display:inline-block;background:#16803c;color:#fff;border-radius:20px;padding:4px 8px;font-size:10px;margin-left:6px}
 .offline-status{position:fixed;left:10px;top:10px;z-index:45;background:#16803c;color:#fff;border-radius:20px;padding:6px 10px;font-size:11px;font-weight:bold;box-shadow:0 2px 10px #0002}.offline-status.offline{background:#c0392b}.offline-status.pending{background:#9a5a00}
+
+/* ===== IPV MEJORADO: COLUMNA FIJA + PANTALLA COMPLETA ===== */
+.ipv-table-wrap{position:relative;overflow:auto;max-height:58vh;-webkit-overflow-scrolling:touch}
+.ipv-table{position:relative}
+.ipv-table th:first-child,.ipv-table td:first-child{position:sticky;left:0;z-index:3;background:#fff;box-shadow:3px 0 5px rgba(0,0,0,.08);min-width:150px;max-width:190px;white-space:normal}
+.ipv-table th:first-child{z-index:5;background:#111;color:#fff}
+.ipv-fullscreen{position:fixed!important;inset:0;z-index:900;background:#f4f4f4;padding:10px;max-height:none!important;border-radius:0;overflow:auto}
+.ipv-fullscreen .ipv-table-wrap{max-height:none;height:calc(100vh - 210px)}
+.ipv-fullscreen .ipv-fullscreen-close{display:block!important}
+.ipv-fullscreen-bar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ipv-fullscreen-close{display:none}
+.ipv-day-sales{margin-top:12px}
+.ipv-day-sale{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:11px;margin-top:8px}
+.ipv-day-sale.reverted{opacity:.62;border-style:dashed}
+.ipv-sale-head{display:flex;justify-content:space-between;gap:8px;font-weight:bold}
+.ipv-sale-meta{font-size:12px;color:#666;margin-top:4px;line-height:1.45}
+.ipv-sale-actions{margin-top:8px;display:flex;gap:7px}
+.ipv-sale-actions button{flex:1}
+.sale-reverted-badge{display:inline-block;background:#ffe4e1;color:#b42318;border-radius:8px;padding:3px 7px;font-size:11px;font-weight:bold}
+.sale-number{font-weight:bold;color:#16803c}
+@media(max-width:599px){.ipv-table th:first-child,.ipv-table td:first-child{min-width:125px;max-width:150px}.ipv-fullscreen{padding:7px}.ipv-fullscreen .ipv-table-wrap{height:calc(100vh - 225px)}}
 </style>
 </head>
 <body>
@@ -144,7 +165,8 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <div class="capital-card"><div class="capital-label">Ganancia acumulada</div><div id="capitalProfitDisplay" class="capital-value capital-profit">$0.00</div></div>
 <div class="capital-card capital-main"><div class="capital-label">Capital actual</div><div id="capitalCurrentDisplay" class="capital-value">$0.00</div></div>
 </div>
-<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo del producto. El <strong>efectivo en caja</strong> se calcula como capital inicial + ventas cobradas en efectivo. Tarjeta, transferencia y otros métodos no se suman al efectivo físico.</div>
+<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>efectivo en caja</strong> se calcula con movimientos reales: capital inicial + ventas en efectivo + dinero repuesto por retiros personales − compras de mercancía pagadas en efectivo − otras salidas de efectivo.</div>
+<div style="margin-top:10px"><button class="secondary" style="width:100%" onclick="registerCashExpense()">💸 Registrar salida de efectivo</button></div>
 <div class="capital-setting">
 <div><label>Establecer capital inicial</label><input id="capitalInitialInput" type="number" min="0" step="0.01" placeholder="0.00"></div>
 <button class="primary" onclick="saveInitialCapital()">💾 Guardar capital</button>
@@ -252,6 +274,8 @@ let ipvMovementType="entry";
 let ipvDailyReports=loadData("italy_ipv_daily",[]);
 let ipvMovements=loadData("italy_ipv_movements",[]);
 let capitalInitial=Number(loadData("italy_capital_initial",0))||0;
+let cashMovements=loadData("italy_cash_movements",[]);
+if(!Array.isArray(cashMovements)) cashMovements=[];
 
 if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
 
@@ -1608,6 +1632,316 @@ updateOfflineStatus();
     });
     if(typeof renderCapital==="function")renderCapital();
   });
+})();
+</script>
+
+<script>
+/* ===== CONTABILIDAD DE CAJA REAL — ADMIN OFFLINE ===== */
+(function(){
+  function saveCashMovements(){ saveData("italy_cash_movements",cashMovements); }
+  function cashOutflows(){
+    return cashMovements.reduce((sum,m)=>sum+(Number(m.amount)||0),0);
+  }
+  function cashSales(){
+    return sales.reduce((sum,s)=>{
+      return sum + (String(s.payment||"").trim().toLowerCase()==="efectivo" ? Number(s.total||0) : 0);
+    },0);
+  }
+  function personalCash(){
+    return (Array.isArray(ipvMovements)?ipvMovements:[]).filter(m=>m&&m.type==="personal_withdrawal")
+      .reduce((sum,m)=>{
+        const a=Number(m.cashAmount);
+        return sum + (Number.isFinite(a)&&a>0 ? a : (Number(m.unitCost)||0)*(Number(m.quantity)||0));
+      },0);
+  }
+
+  window.getCashInBox=function(){
+    return Number(capitalInitial||0) + cashSales() + personalCash() - cashOutflows();
+  };
+
+  window.registerCashExpense=function(){
+    const desc=prompt("Describe la salida de efectivo (ej.: compra de bolsas, transporte, gasto del negocio):");
+    if(desc===null)return;
+    const clean=String(desc).trim();
+    if(!clean){alert("Debes indicar el motivo.");return}
+    const amount=Number(prompt("Importe que salió de la caja:","0"));
+    if(!Number.isFinite(amount)||amount<=0){alert("Introduce un importe válido.");return}
+    if(!confirm(`Registrar una salida de efectivo de ${money(amount)} por:\n\n${clean}\n\nEste importe se descontará de la caja.`))return;
+    cashMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"expense",description:clean,amount:Number(amount)});
+    saveCashMovements();
+    renderCapital();
+    alert("Salida de efectivo registrada correctamente.");
+  };
+
+  // Modal de inventario: entradas pueden ser compras en efectivo o entradas sin pago.
+  const baseOpen=window.openIPVMovementModal;
+  window.openIPVMovementModal=function(type){
+    if(typeof baseOpen==="function")baseOpen(type);
+    const q=document.getElementById("ipvMovementQuantity");
+    if(!q)return;
+    let wrap=document.getElementById("cashMovementOptions");
+    if(!wrap){
+      wrap=document.createElement("div");
+      wrap.id="cashMovementOptions";
+      q.parentNode.insertAdjacentElement("afterend",wrap);
+    }
+    if(type==="entry"){
+      wrap.innerHTML=`
+        <label>Tipo de entrada</label>
+        <select id="ipvEntryCashType">
+          <option value="purchase">🛒 Compra de mercancía — pagada en efectivo</option>
+          <option value="free">📦 Entrada sin pago — no afecta caja</option>
+        </select>
+        <div id="purchaseCostHint" class="hint"></div>`;
+      wrap.style.display="block";
+      const update=()=>{
+        const p=getProduct(document.getElementById("ipvMovementProduct")?.value);
+        const typeV=document.getElementById("ipvEntryCashType")?.value;
+        const h=document.getElementById("purchaseCostHint");
+        if(h&&p&&typeV==="purchase") h.innerHTML=`Salida de caja estimada: <strong>${money((Number(p.cost)||0)*(Math.floor(Number(q.value))||0))}</strong> (${money(Number(p.cost)||0)} × ${Math.floor(Number(q.value))||0}).`;
+        else if(h) h.textContent="Esta entrada no modificará el efectivo en caja.";
+      };
+      document.getElementById("ipvEntryCashType").addEventListener("change",update);
+      q.addEventListener("input",update);
+      document.getElementById("ipvMovementProduct")?.addEventListener("change",update);
+      update();
+    }else{
+      wrap.style.display="none";
+      wrap.innerHTML="";
+    }
+  };
+
+  const previousSave=window.saveIPVMovement;
+  window.saveIPVMovement=function(){
+    const p=getProduct(document.getElementById("ipvMovementProduct")?.value);
+    const q=Math.floor(Number(document.getElementById("ipvMovementQuantity")?.value));
+    if(!p){alert("Selecciona un producto.");return}
+    if(!Number.isFinite(q)||q<=0){alert("Introduce una cantidad válida.");return}
+    if(ipvMovementType==="entry"){
+      const cashType=document.getElementById("ipvEntryCashType")?.value||"purchase";
+      const unitCost=Number(p.cost)||0;
+      const amount=unitCost*q;
+      if(cashType==="purchase" && amount<=0){
+        alert("Este producto no tiene un costo válido. Define primero su costo para registrar una compra pagada en efectivo.");
+        return;
+      }
+      if(cashType==="purchase" && !confirm(`Registrar compra de ${q} ${p.unit||"unidad"}(es) de «${p.name}»?\n\nSe agregarán ${q} unidades al inventario y se descontarán ${money(amount)} de la caja al costo registrado.`))return;
+
+      p.stock=(Number(p.stock)||0)+q;
+      p.ipvEntries=(Number(p.ipvEntries)||0)+q;
+      ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"entry",productId:p.id,quantity:q});
+      if(cashType==="purchase"){
+        cashMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"purchase",productId:p.id,productName:p.name,quantity:q,unitCost:unitCost,amount:amount});
+      }
+    }else{
+      if(q>Number(p.stock||0)){alert("La salida no puede ser mayor que la existencia actual.");return}
+      const reason=document.getElementById("ipvExitReason")?.value||"other";
+      const isPersonal=reason==="personal";
+      const unitCost=Number(p.cost)||0;
+      const amount=isPersonal?unitCost*q:0;
+      if(isPersonal&&unitCost<=0){alert("Este producto no tiene un costo válido. Define primero su costo para registrar un retiro personal.");return}
+      if(isPersonal&&!confirm(`Retirar ${q} ${p.unit||"unidad"}(es) de «${p.name}» para uso personal?\n\nSe descontarán del inventario y se sumarán ${money(amount)} a la caja al costo.\n\nNo genera ganancia.`))return;
+      p.stock=(Number(p.stock)||0)-q;
+      p.ipvOtherExits=(Number(p.ipvOtherExits)||0)+q;
+      ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:isPersonal?"personal_withdrawal":"exit",reason:isPersonal?"personal":reason,productId:p.id,quantity:q,unitCost:isPersonal?unitCost:0,cashAmount:isPersonal?amount:0});
+    }
+    saveData("italy_products",products);
+    saveData("italy_ipv_movements",ipvMovements);
+    saveCashMovements();
+    closeIPVMovementModal();
+    renderInventory();renderSaleProducts();renderIPVDailyHistory();renderCapital();
+  };
+
+  // El capital actual representa el dinero disponible en caja + ganancia no realizada no se mezcla.
+  const previousRender=window.renderCapital;
+  window.renderCapital=function(){
+    if(typeof previousRender==="function")previousRender();
+    const cash=window.getCashInBox();
+    const today=localDateKey();
+    const todayOtherExits=ipvMovements.filter(m=>m&&m.type==="exit"&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.quantity||0),0);
+    const todayPersonal=ipvMovements.filter(m=>m&&m.type==="personal_withdrawal"&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.cashAmount||0),0);
+    const todayCashOut=cashMovements.filter(m=>m&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.amount||0),0);
+    const cashEl=document.getElementById("cashInBoxTotal");
+    if(cashEl)cashEl.textContent=money(cash);
+    const otherEl=document.getElementById("todayOtherExitsTotal");
+    if(otherEl)otherEl.textContent=String(todayOtherExits);
+    const el=document.getElementById("capitalTodayProfit");
+    if(el){
+      el.innerHTML=`Ganancia de hoy: <strong>${money(getTodayProfit())}</strong><br>Efectivo real en caja: <strong>${money(cash)}</strong><br>Otras salidas de mercancía de hoy: <strong>${todayOtherExits}</strong> unidades<br>Retiros personales de hoy: <strong>${money(todayPersonal)}</strong><br>Salidas de efectivo de hoy: <strong>${money(todayCashOut)}</strong>`;
+    }
+    const currentEl=document.getElementById("capitalCurrentDisplay");
+    if(currentEl)currentEl.textContent=money(cash);
+  };
+
+  // Guardar capital inicial: es el saldo de caja desde el que comienza el control.
+  window.saveInitialCapital=function(){
+    const v=Number(document.getElementById("capitalInitialInput")?.value);
+    if(!Number.isFinite(v)||v<0){alert("Introduce un capital inicial válido.");return}
+    capitalInitial=v;
+    saveData("italy_capital_initial",capitalInitial);
+    renderCapital();
+    alert("Capital inicial guardado correctamente en este teléfono.");
+  };
+
+  // Persistencia adicional y corrección del texto visible.
+  saveCashMovements();
+  setTimeout(()=>{
+    document.querySelectorAll(".hint").forEach(el=>{
+      if(el.textContent.includes("descuenta el valor del inventario actual calculado al costo")){
+        el.innerHTML="La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>efectivo real en caja</strong> parte del capital inicial, suma las ventas en efectivo y los retiros personales repuestos al costo, y resta las compras de mercancía pagadas en efectivo y las demás salidas de dinero. El valor del inventario se controla por separado.";
+      }
+    });
+    renderCapital();
+  },0);
+})();
+</script>
+
+<script>
+/* ===== IPV + VENTAS: NUMERACIÓN, REVERSIÓN Y PANTALLA COMPLETA ===== */
+(function(){
+  function activeSales(){ return (Array.isArray(sales)?sales:[]).filter(s=>!s.reverted); }
+
+  // Asigna números a ventas antiguas sin cambiar su identidad. Las ordena cronológicamente.
+  function ensureSaleNumbers(){
+    const all=Array.isArray(sales)?sales:[];
+    const missing=all.filter(s=>!Number.isInteger(Number(s.saleNumber))||Number(s.saleNumber)<=0);
+    if(!missing.length)return;
+    const used=all.map(s=>Number(s.saleNumber)).filter(n=>Number.isInteger(n)&&n>0);
+    let next=used.length?Math.max(...used)+1:1;
+    all.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(s=>{
+      if(!Number.isInteger(Number(s.saleNumber))||Number(s.saleNumber)<=0){s.saleNumber=next++;}
+    });
+    saveData('italy_sales',all);
+  }
+  ensureSaleNumbers();
+
+  function nextSaleNumber(){
+    const nums=(Array.isArray(sales)?sales:[]).map(s=>Number(s.saleNumber)).filter(n=>Number.isInteger(n)&&n>0);
+    return nums.length?Math.max(...nums)+1:1;
+  }
+  function saleLabel(s){return `Venta #${String(Number(s.saleNumber)||0).padStart(6,'0')}`}
+
+  // Reemplaza la presentación del historial para mostrar el consecutivo y la reversión.
+  window.renderSales=function(){
+    const today=localDateKey();
+    const active=activeSales();
+    const ts=active.filter(s=>localDateKey(s.date)===today);
+    const countEl=document.getElementById('todaySalesCount');
+    const totalEl=document.getElementById('todaySalesTotal');
+    if(countEl)countEl.textContent=ts.length;
+    if(totalEl)totalEl.textContent=money(ts.reduce((a,s)=>a+Number(s.total||0),0));
+    if(typeof renderCapital==='function')renderCapital();
+    const c=document.getElementById('salesHistory');
+    if(!c)return;
+    if(!sales.length){c.innerHTML='<div class="card empty">Todavía no hay ventas registradas.</div>';return}
+    c.innerHTML=sales.map(s=>{
+      const d=new Date(s.date);
+      const reverted=!!s.reverted;
+      const status=s.offline&&!s.synced?'<div style="margin-top:7px;color:#9a5a00;font-size:12px;font-weight:bold">📴 Pendiente de sincronización</div>':(s.synced?'<div style="margin-top:7px;color:#16803c;font-size:12px">☁️ Sincronizada</div>':'');
+      const items=(s.items||[]).map(i=>`${esc(i.name)} × ${i.quantity}`).join('<br>');
+      return `<div class="sale-item ${reverted?'sale-reverted':''}">
+        <div class="sale-top"><div><div class="sale-title"><span class="sale-number">${saleLabel(s)}</span>${reverted?' <span class="sale-reverted-badge">REVERTIDA</span>':''}</div><div class="sale-date">${d.toLocaleDateString()} ${d.toLocaleTimeString()}</div></div><div class="sale-total">${money(s.total)}</div></div>
+        <div class="sale-products">${items}</div>
+        <div style="margin-top:8px;color:#777;font-size:12px">Pago: ${esc(s.payment||'')}</div>${status}
+        ${s.revertedAt?`<div style="margin-top:5px;color:#b42318;font-size:11px">↩️ Revertida: ${new Date(s.revertedAt).toLocaleString()}</div>`:''}
+        ${s.revertReason?`<div style="margin-top:4px;color:#777;font-size:11px">Motivo: ${esc(s.revertReason)}</div>`:''}
+        ${s.syncError?`<div style="margin-top:5px;color:#c0392b;font-size:11px">Error: ${esc(s.syncError)}</div>`:''}
+        ${reverted?'':`<div class="admin-actions"><button class="danger" onclick="revertSale('${s.id}')">↩️ Revertir venta</button></div>`}
+      </div>`;
+    }).join('');
+    if(typeof updateOfflineStatus==='function')updateOfflineStatus();
+  };
+
+  // Venta nueva: añade número consecutivo sin reutilizar números anulados.
+  window.completeSale=function(){
+    if(!cart.length)return;
+    for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert('No hay suficiente inventario.');return}}
+    const items=cart.map(i=>{const p=getProduct(i.productId);return{productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:Number(p.cost)||0,subtotal:Number(p.price)*i.quantity}});
+    cart.forEach(i=>{
+      const p=getProduct(i.productId);p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;
+      ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:'sale',productId:p.id,quantity:i.quantity,saleId:null});
+    });
+    const total=items.reduce((s,i)=>s+i.subtotal,0),costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
+    const sale={id:generateId(),saleNumber:nextSaleNumber(),date:new Date().toISOString(),payment:document.getElementById('paymentMethod').value,items,total,costTotal,profit:total-costTotal,reverted:false};
+    // Vincula los movimientos de esta venta para trazabilidad.
+    ipvMovements.forEach(m=>{if(m.type==='sale'&&!m.saleId&&sale.items.some(i=>i.productId===m.productId)&&m.date===ipvMovements.find(x=>x.id===m.id)?.date)m.saleId=sale.id;});
+    sales.unshift(sale);cart=[];
+    saveData('italy_products',products);saveData('italy_sales',sales);saveData('italy_ipv_movements',ipvMovements);
+    closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
+    document.getElementById('successDetails').innerHTML=`${saleLabel(sale)}<br>Total: <strong>${money(total)}</strong><br>Pago con: ${esc(sale.payment)}<br><strong>📱 Guardada en este teléfono.</strong>`;
+    document.getElementById('successModal').classList.add('show');
+  };
+
+  window.revertSale=function(saleId){
+    const sale=sales.find(s=>s.id===saleId);
+    if(!sale)return;
+    if(sale.reverted){alert('Esta venta ya fue revertida.');return}
+    const detail=(sale.items||[]).map(i=>`${i.name} × ${i.quantity}`).join('\n');
+    if(!confirm(`↩️ REVERTIR ${saleLabel(sale)}\n\n${detail}\n\nTotal: ${money(sale.total)}\nPago: ${sale.payment}\n\nLas unidades volverán al inventario y se corregirán la ganancia y la caja si fue efectivo.\n\n¿Continuar?`))return;
+    const reason=prompt('Motivo de la reversión (opcional):','Venta registrada por error');
+    if(reason===null)return;
+    (sale.items||[]).forEach(item=>{
+      const p=getProduct(item.productId);
+      if(p){p.stock=(Number(p.stock)||0)+Number(item.quantity||0);p.ipvSales=Math.max(0,(Number(p.ipvSales)||0)-Number(item.quantity||0));}
+    });
+    const now=new Date().toISOString();
+    ipvMovements.forEach(m=>{if(m.type==='sale'&&m.saleId===sale.id)m.reverted=true;m.revertedAt=m.reverted?m.revertedAt:now;});
+    sale.reverted=true;sale.revertedAt=now;sale.revertReason=String(reason||'').trim();
+    saveData('italy_products',products);saveData('italy_sales',sales);saveData('italy_ipv_movements',ipvMovements);
+    renderSaleProducts();renderCart();renderInventory();renderSales();renderCapital();
+    // Si existe un IPV guardado para ese día, lo regeneramos para que refleje la reversión.
+    const day=localDateKey(sale.date);
+    if(Array.isArray(ipvDailyReports)){
+      const idx=ipvDailyReports.findIndex(r=>r.date===day);
+      if(idx>=0){
+        const fresh=dailyDataFor(day);ipvDailyReports[idx]={...fresh,generatedAt:now};saveData('italy_ipv_daily',ipvDailyReports);renderDailyIPV(ipvDailyReports[idx]);
+      }
+    }
+    alert(`${saleLabel(sale)} fue revertida correctamente.\nEl inventario, la ganancia y el efectivo han sido recalculados.`);
+  };
+
+  function daySales(dateKey){return activeSales().filter(s=>localDateKey(s.date)===dateKey);}
+
+  // IPV diario con ventas consecutivas y botón de reversión.
+  const originalDailyDataFor=window.dailyDataFor;
+  window.dailyDataFor=function(dateKey){
+    const salesDay=daySales(dateKey);
+    const movDay=ipvMovements.filter(m=>localDateKey(m.date)===dateKey);
+    const rows=products.map(p=>{
+      const salesQty=salesDay.reduce((sum,s)=>sum+(s.items||[]).filter(i=>i.productId===p.id).reduce((a,i)=>a+Number(i.quantity||0),0),0);
+      const entries=movDay.filter(m=>m.productId===p.id&&m.type==='entry').reduce((a,m)=>a+Number(m.quantity||0),0);
+      const exits=movDay.filter(m=>m.productId===p.id&&(m.type==='exit'||m.type==='personal_withdrawal')).reduce((a,m)=>a+Number(m.quantity||0),0);
+      const existence=Number(p.stock)||0;const initial=existence-entries+salesQty+exits;const price=Number(p.price)||0;
+      return {productId:p.id,name:p.name,unit:p.unit||'unidad',initial,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
+    });
+    return {date:dateKey,rows,total:rows.reduce((a,r)=>a+r.amount,0),salesCount:salesDay.length,salesTotal:salesDay.reduce((a,s)=>a+Number(s.total||0),0),entries:rows.reduce((a,r)=>a+r.entries,0),otherExits:rows.reduce((a,r)=>a+r.otherExits,0)};
+  };
+
+  window.renderDailyIPV=function(report){
+    const c=document.getElementById('dailyIPVContainer');
+    if(!report){c.innerHTML='<div class="empty">Selecciona una fecha y pulsa “Generar IPV del día”.</div>';return}
+    const rows=report.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${r.initial}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.otherExits}</td><td><strong>${r.existence}</strong></td><td>${money(r.price)}</td><td class="ipv-amount">${money(r.amount)}</td></tr>`).join('');
+    const salesDay=daySales(report.date);
+    const salesHtml=salesDay.length?salesDay.map(s=>`<div class="ipv-day-sale"><div class="ipv-sale-head"><span class="sale-number">${saleLabel(s)}</span><span>${money(s.total)}</span></div><div class="ipv-sale-meta">${(s.items||[]).map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}<br>Pago: ${esc(s.payment||'')}</div><div class="ipv-sale-actions"><button class="danger" onclick="revertSale('${s.id}')">↩️ Revertir venta</button></div></div>`).join(''):'<div class="empty">No hay ventas válidas registradas para este día.</div>';
+    c.innerHTML=`<div class="hint"><strong>IPV del ${formatDateKey(report.date)}</strong><br>Ventas: ${report.salesCount} · Total vendido: ${money(report.salesTotal)} · Entradas: ${report.entries} · Otras salidas: ${report.otherExits}</div>
+      <div class="ipv-fullscreen-bar"><strong>📋 Detalle del IPV</strong><div style="display:flex;gap:7px"><button class="secondary" onclick="openIPVFullscreen()">⛶ Pantalla completa</button><button class="secondary ipv-fullscreen-close" onclick="closeIPVFullscreen()">✕ Salir</button></div></div>
+      <div id="ipvDailyTableBox" class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="card ipv-day-sales"><h3 style="margin:0 0 8px">🧾 Ventas del día</h3>${salesHtml}</div>
+      <div class="card ipv-total-card" style="margin-top:10px;margin-bottom:0"><div class="ipv-total-label">VALOR DEL INVENTARIO AL CIERRE DEL DÍA</div><div class="ipv-grand-total">${money(report.total)}</div></div>`;
+  };
+
+  window.openIPVFullscreen=function(){
+    const box=document.getElementById('dailyIPVContainer');if(!box)return;
+    box.classList.add('ipv-fullscreen');document.body.style.overflow='hidden';
+  };
+  window.closeIPVFullscreen=function(){
+    const box=document.getElementById('dailyIPVContainer');if(!box)return;
+    box.classList.remove('ipv-fullscreen');document.body.style.overflow='';
+  };
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')window.closeIPVFullscreen();});
+
+  // Después de cargar el modo offline, asegurar que los números estén visibles.
+  setTimeout(()=>{ensureSaleNumbers();if(typeof renderSales==='function')renderSales();},0);
 })();
 </script>
 </body>
