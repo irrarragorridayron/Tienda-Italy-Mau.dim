@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#111111">
-<meta name="app-version" content="8">
+<meta name="app-version" content="9">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -81,8 +81,8 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 .ipv-table th:first-child,.ipv-table td:first-child{position:sticky;left:0;z-index:3;background:#fff;box-shadow:3px 0 5px rgba(0,0,0,.08);min-width:150px;max-width:190px;white-space:normal}
 .ipv-table th:first-child{z-index:5;background:#111;color:#fff}
 .ipv-fullscreen{position:fixed!important;inset:0;z-index:900;background:#f4f4f4;padding:10px;max-height:none!important;border-radius:0;overflow:auto}
-.ipv-fullscreen .ipv-table-wrap{max-height:none;height:calc(100vh - 210px)}
-.ipv-fullscreen .ipv-fullscreen-close{display:block!important}
+.ipv-fullscreen .ipv-table-wrap{max-height:none;height:calc(100vh - 210px);overflow:auto}
+.ipv-fullscreen .ipv-fullscreen-close{display:inline-block!important}
 .ipv-fullscreen-bar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
 .ipv-fullscreen-close{display:none}
 .ipv-day-sales{margin-top:12px}
@@ -102,7 +102,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 
 <header>
 <h1>🏪 Tienda Italy Mau.dim</h1>
-<p>Ventas e inventario offline</p>
+<p>Ventas e inventario offline · v9</p>
 </header>
 
 <main>
@@ -636,7 +636,7 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=8").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=9").catch(e=>console.error(e)));}</script>
 <script>
 /* ===== MODO MULTIUSUARIO / SUPABASE =====
    1) Pega aquí el Project URL y la Publishable/anon key de TU proyecto Supabase.
@@ -1864,7 +1864,11 @@ updateOfflineStatus();
     const total=items.reduce((s,i)=>s+i.subtotal,0),costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
     const sale={id:generateId(),saleNumber:nextSaleNumber(),date:new Date().toISOString(),payment:document.getElementById('paymentMethod').value,items,total,costTotal,profit:total-costTotal,reverted:false};
     // Vincula los movimientos de esta venta para trazabilidad.
-    ipvMovements.forEach(m=>{if(m.type==='sale'&&!m.saleId&&sale.items.some(i=>i.productId===m.productId)&&m.date===ipvMovements.find(x=>x.id===m.id)?.date)m.saleId=sale.id;});
+    const saleMovementIds = [];
+    sale.items.forEach(item=>{
+      const movement = ipvMovements.find(m=>m.type==='sale' && !m.saleId && m.productId===item.productId && m.date===sale.date);
+      if(movement){ movement.saleId=sale.id; saleMovementIds.push(movement.id); }
+    });
     sales.unshift(sale);cart=[];
     saveData('italy_products',products);saveData('italy_sales',sales);saveData('italy_ipv_movements',ipvMovements);
     closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();
@@ -1885,7 +1889,12 @@ updateOfflineStatus();
       if(p){p.stock=(Number(p.stock)||0)+Number(item.quantity||0);p.ipvSales=Math.max(0,(Number(p.ipvSales)||0)-Number(item.quantity||0));}
     });
     const now=new Date().toISOString();
-    ipvMovements.forEach(m=>{if(m.type==='sale'&&m.saleId===sale.id)m.reverted=true;m.revertedAt=m.reverted?m.revertedAt:now;});
+    ipvMovements.forEach(m=>{
+      if(m.type==='sale' && m.saleId===sale.id){
+        m.reverted=true;
+        m.revertedAt=now;
+      }
+    });
     sale.reverted=true;sale.revertedAt=now;sale.revertReason=String(reason||'').trim();
     saveData('italy_products',products);saveData('italy_sales',sales);saveData('italy_ipv_movements',ipvMovements);
     renderSaleProducts();renderCart();renderInventory();renderSales();renderCapital();
@@ -1921,8 +1930,15 @@ updateOfflineStatus();
     const c=document.getElementById('dailyIPVContainer');
     if(!report){c.innerHTML='<div class="empty">Selecciona una fecha y pulsa “Generar IPV del día”.</div>';return}
     const rows=report.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${r.initial}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.otherExits}</td><td><strong>${r.existence}</strong></td><td>${money(r.price)}</td><td class="ipv-amount">${money(r.amount)}</td></tr>`).join('');
-    const salesDay=daySales(report.date);
-    const salesHtml=salesDay.length?salesDay.map(s=>`<div class="ipv-day-sale"><div class="ipv-sale-head"><span class="sale-number">${saleLabel(s)}</span><span>${money(s.total)}</span></div><div class="ipv-sale-meta">${(s.items||[]).map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}<br>Pago: ${esc(s.payment||'')}</div><div class="ipv-sale-actions"><button class="danger" onclick="revertSale('${s.id}')">↩️ Revertir venta</button></div></div>`).join(''):'<div class="empty">No hay ventas válidas registradas para este día.</div>';
+    const salesDay=(Array.isArray(sales)?sales:[]).filter(s=>localDateKey(s.date)===report.date);
+    const salesHtml=salesDay.length?salesDay.map(s=>{
+      const reverted=!!s.reverted;
+      return `<div class="ipv-day-sale ${reverted?'reverted':''}">
+        <div class="ipv-sale-head"><span class="sale-number">${saleLabel(s)}${reverted?' <span class="sale-reverted-badge">REVERTIDA</span>':''}</span><span>${money(s.total)}</span></div>
+        <div class="ipv-sale-meta">${(s.items||[]).map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}<br>Pago: ${esc(s.payment||'')}${s.revertedAt?`<br>Revertida: ${new Date(s.revertedAt).toLocaleString()}`:''}${s.revertReason?`<br>Motivo: ${esc(s.revertReason)}`:''}</div>
+        ${reverted?'':`<div class="ipv-sale-actions"><button class="danger" onclick="revertSale('${s.id}')">↩️ Revertir venta</button></div>`}
+      </div>`;
+    }).join(''):'<div class="empty">No hay ventas registradas para este día.</div>';
     c.innerHTML=`<div class="hint"><strong>IPV del ${formatDateKey(report.date)}</strong><br>Ventas: ${report.salesCount} · Total vendido: ${money(report.salesTotal)} · Entradas: ${report.entries} · Otras salidas: ${report.otherExits}</div>
       <div class="ipv-fullscreen-bar"><strong>📋 Detalle del IPV</strong><div style="display:flex;gap:7px"><button class="secondary" onclick="openIPVFullscreen()">⛶ Pantalla completa</button><button class="secondary ipv-fullscreen-close" onclick="closeIPVFullscreen()">✕ Salir</button></div></div>
       <div id="ipvDailyTableBox" class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead><tbody>${rows}</tbody></table></div>
