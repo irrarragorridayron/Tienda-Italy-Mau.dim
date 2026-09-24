@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#111111">
-<meta name="app-version" content="6">
+<meta name="app-version" content="8">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -233,46 +233,8 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 </div>
 
 
-<script>
-/* Italy Mau.dim — cache/source-of-truth patch v6 */
-(function(){
-  const VERSION="7";
-  const BOOT_KEY="italy_mau_bootstrap_v7_done";
-  const RELOAD_KEY="italy_mau_reload_v7";
-  const DATA_KEYS=["italy_products","italy_sales","italy_ipv_movements","italy_ipv_daily","italy_capital_initial"];
-  window.ITALY_MAU_APP_VERSION=VERSION;
-  window.__cloudMustBeAuthoritative=navigator.onLine;
 
-  async function cleanupOnce(){
-    if(!navigator.onLine || localStorage.getItem(BOOT_KEY)===VERSION) return;
-    localStorage.setItem(BOOT_KEY,VERSION);
-    for(const key of DATA_KEYS){try{localStorage.removeItem(key)}catch(e){}}
-    try{
-      if("serviceWorker" in navigator){
-        const regs=await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r=>r.unregister()));
-      }
-    }catch(e){console.warn("No se pudieron quitar los Service Workers",e)}
-    try{
-      if("caches" in window){
-        const names=await caches.keys();
-        await Promise.all(names.map(n=>caches.delete(n)));
-      }
-    }catch(e){console.warn("No se pudieron limpiar las cachés",e)}
-    try{sessionStorage.setItem(RELOAD_KEY,"1");location.reload()}catch(e){}
-  }
 
-  if(navigator.onLine && sessionStorage.getItem(RELOAD_KEY)!==VERSION){
-    cleanupOnce();
-  }else if(sessionStorage.getItem(RELOAD_KEY)===VERSION){
-    sessionStorage.removeItem(RELOAD_KEY);
-  }
-
-  window.addEventListener("online",()=>{window.__cloudMustBeAuthoritative=true});
-})();
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const DEFAULT_PRODUCTS=[
 {id:"p1",name:"Aceite",price:0,cost:0,stock:0,unit:"unidad",icon:"🫒"},
@@ -650,7 +612,7 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=7").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=8").catch(e=>console.error(e)));}</script>
 <script>
 /* ===== MODO MULTIUSUARIO / SUPABASE =====
    1) Pega aquí el Project URL y la Publishable/anon key de TU proyecto Supabase.
@@ -1016,17 +978,7 @@ async function startOfflineWithoutSupabase(){
 }
 
 function loadSupabaseLibrary(){
-  return new Promise((resolve,reject)=>{
-    if(window.supabase){resolve(window.supabase);return}
-    const existing=document.querySelector('script[data-supabase-loader="1"]');
-    if(existing){existing.addEventListener("load",()=>resolve(window.supabase));existing.addEventListener("error",reject);return}
-    const sc=document.createElement("script");
-    sc.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
-    sc.dataset.supabaseLoader="1";
-    sc.onload=()=>window.supabase?resolve(window.supabase):reject(new Error("Supabase no cargó"));
-    sc.onerror=()=>reject(new Error("No se pudo cargar Supabase"));
-    document.head.appendChild(sc);
-  });
+  return Promise.reject(new Error("Supabase está desactivado en el modo Administrador Offline."));
 }
 
 async function initCloud(){
@@ -1351,38 +1303,25 @@ function clearInitialLocalData(){
 
 async function initialStoreSetupAdmin(){
   if(!isAdmin()){alert("Solo el administrador puede hacer la puesta a cero inicial.");return}
-  if(!navigator.onLine||!cloud||!cloudUser){alert("La puesta a cero inicial requiere Internet y una sesión activa del administrador. No se hará ningún reinicio offline.");return}
-  if(!confirm("⚠️ PUESTA A CERO INICIAL\n\nSe eliminarán del sistema compartido todas las ventas, movimientos, capital e historial IPV. Los productos se conservarán.\n\nHaz esto SOLO antes de comenzar a usar la tienda.\n\n¿Continuar?"))return;
-  if(!confirm("⚠️ ÚLTIMA CONFIRMACIÓN\n\nEsta acción dejará la tienda compartida lista para comenzar desde cero.\n\nSe eliminarán las ventas, movimientos, capital e historial IPV anteriores. Los productos se conservarán.\n\n¿Confirmas que quieres comenzar desde cero?")){alert("Puesta a cero cancelada.");return}
-  try{
-    resetInProgress=true; resetProtectionUntil=Date.now()+15000; if(cloud)cloud.removeAllChannels();
-    const {error}=await cloud.rpc("reset_shop_data");
-    if(error){alert("❌ Supabase rechazó la puesta a cero.\n\n"+(error.message||"Sin mensaje")+"\nCódigo: "+(error.code||"sin código"));subscribeCloud();return}
-    clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
-    const loaded=await cloudLoadAll();
-    if(!loaded){alert("⚠️ La puesta a cero se realizó en Supabase, pero no se pudo recargar el estado. Mantén Internet y vuelve a abrir la app.");subscribeCloud();return}
-    const check={sales:sales.length,movements:ipvMovements.length,stock:products.filter(p=>Number(p.stock)!==0).length,ipv:products.filter(p=>Number(p.ipvInitialStock)!==0||Number(p.ipvEntries)!==0||Number(p.ipvSales)!==0||Number(p.ipvOtherExits)!==0).length,capital:Number(capitalInitial)||0};
-    if(check.sales||check.movements||check.stock||check.ipv||check.capital){alert("⚠️ La puesta a cero no quedó verificada. Ventas: "+check.sales+" · Movimientos: "+check.movements+" · Stock: "+check.stock+" · IPV: "+check.ipv+" · Capital: "+money(check.capital));subscribeCloud();return}
-    subscribeCloud(); updateInitialDeviceCard();
-    alert("✅ Puesta a cero inicial completada.\n\nLa tienda compartida comienza desde cero.\n\nAhora, en el teléfono del vendedor, pulsa «Preparar este teléfono para comenzar».\n\nA partir de este momento no se ejecutará ningún reinicio automático.");
-  }catch(e){alert("❌ Ocurrió un error:\n\n"+(e.message||e));subscribeCloud()}finally{resetInProgress=false;resetProtectionUntil=0;updateOfflineStatus()}
+  if(!confirm("⚠️ PUESTA A CERO INICIAL\n\nSe eliminarán de ESTE TELÉFONO las ventas, movimientos, capital e historial IPV. Los productos se conservarán.\n\nHaz esto SOLO antes de comenzar a usar la tienda.\n\n¿Continuar?"))return;
+  if(!confirm("⚠️ ÚLTIMA CONFIRMACIÓN\n\nEsta acción no se puede deshacer en este teléfono.\n\n¿Confirmas que quieres comenzar desde cero?")){alert("Puesta a cero cancelada.");return}
+  clearInitialLocalData();
+  localStorage.setItem("italy_initial_store_setup_v1","done");
+  loadLocal();
+  renderAll();
+  updateInitialDeviceCard();
+  alert("✅ Puesta a cero local completada.\n\nLa aplicación sigue funcionando sin Internet.");
 }
 
 async function prepareInitialDevice(){
-  if(!cloudUser||!cloud||!navigator.onLine){alert("Conecta Internet e inicia sesión antes de preparar este teléfono.");return}
   if(localStorage.getItem("italy_initial_store_setup_v1")==="done"){alert("Este teléfono ya fue preparado para el inicio de la tienda. No se borrará ningún dato nuevo.");return}
-  const [sr,mr,cr]=await Promise.all([
-    cloud.from("sales").select("id",{count:"exact",head:true}),
-    cloud.from("inventory_movements").select("id",{count:"exact",head:true}),
-    cloud.from("shop_settings").select("capital_initial").eq("id",1).maybeSingle()
-  ]);
-  if(sr.error||mr.error||cr.error){alert("No se pudo verificar el estado inicial de Supabase. No se borró nada de este teléfono.");return}
-  const capital=Number(cr.data?.capital_initial)||0;
-  if((sr.count||0)!==0||(mr.count||0)!==0||capital!==0){alert("La tienda compartida todavía no está en cero.\n\nPrimero el administrador debe ejecutar «Hacer puesta a cero inicial».\n\nNo se borró nada de este teléfono.");return}
-  if(!confirm("📱 PREPARAR ESTE TELÉFONO\n\nSe eliminarán únicamente de este dispositivo las ventas antiguas, ventas offline pendientes, movimientos e historial IPV, capital local y colas de reinicios antiguos.\n\nNo se modificará Supabase.\n\n¿Continuar?"))return;
-  clearInitialLocalData(); localStorage.setItem("italy_initial_store_setup_v1","done");
-  const loaded=await cloudLoadAll(); updateInitialDeviceCard();
-  alert(loaded?"✅ Este teléfono está preparado. Ya puede comenzar a registrar operaciones nuevas.":"⚠️ El teléfono fue limpiado, pero no se pudo recargar Supabase. Mantén Internet y vuelve a abrir la app.");
+  if(!confirm("📱 PREPARAR ESTE TELÉFONO\n\nSe eliminarán únicamente de este dispositivo las ventas antiguas, movimientos, historial IPV, capital local y colas offline antiguas.\n\nNo se necesita Internet.\n\n¿Continuar?"))return;
+  clearInitialLocalData();
+  localStorage.setItem("italy_initial_store_setup_v1","done");
+  loadLocal();
+  renderAll();
+  updateInitialDeviceCard();
+  alert("✅ Este teléfono está preparado para trabajar offline.");
 }
 
 function updateInitialDeviceCard(){
