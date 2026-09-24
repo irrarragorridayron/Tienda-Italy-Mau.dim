@@ -579,12 +579,10 @@ function saveInitialCapital(){
 }
 function renderCapital(){
   const profit=getAccumulatedProfit();
-  const activeSales=Array.isArray(sales)?sales.filter(s=>!s.reverted):[];
-  const totalSales=activeSales.reduce((sum,s)=>sum+Number(s.total||0),0);
   const totalInjections=Array.isArray(capitalInjections)?capitalInjections.reduce((sum,m)=>sum+Number(m.amount||0),0):0;
   const totalWithdrawals=Array.isArray(capitalWithdrawals)?capitalWithdrawals.reduce((sum,m)=>sum+Number(m.amount||0),0):0;
   const totalDeterioration=Array.isArray(deteriorationExits)?deteriorationExits.reduce((sum,m)=>sum+Number(m.amount||0),0):0;
-  const current=Number(capitalInitial||0)+totalSales+totalInjections-totalWithdrawals-totalDeterioration;
+  const current=Number(capitalInitial||0)+profit+totalInjections-totalWithdrawals-totalDeterioration;
   const todayProfit=getTodayProfit();
   const cash=getCashInBox();
   const initialEl=document.getElementById("capitalInitialDisplay");
@@ -1843,7 +1841,7 @@ updateOfflineStatus();
   setTimeout(()=>{
     document.querySelectorAll(".hint").forEach(el=>{
       if(el.textContent.includes("descuenta el valor del inventario actual calculado al costo")){
-        el.innerHTML="La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>capital actual</strong> se calcula como capital inicial + ventas + inyecciones de capital − retiros de efectivo del capital − salidas del negocio por deterioro o mal estado. El efectivo en caja, la ganancia y el inventario se controlan por separado.";
+        el.innerHTML="La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>capital actual</strong> se calcula como capital inicial + ganancia acumulada + inyecciones de capital − retiros de capital − salidas del negocio por deterioro o mal estado. El efectivo en caja, la ganancia y el inventario se controlan por separado.";
       }
     });
     renderCapital();
