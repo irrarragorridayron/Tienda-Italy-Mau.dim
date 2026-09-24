@@ -579,7 +579,12 @@ function saveInitialCapital(){
 }
 function renderCapital(){
   const profit=getAccumulatedProfit();
-  const current=capitalInitial+profit;
+  const activeSales=Array.isArray(sales)?sales.filter(s=>!s.reverted):[];
+  const totalSales=activeSales.reduce((sum,s)=>sum+Number(s.total||0),0);
+  const totalInjections=Array.isArray(capitalInjections)?capitalInjections.reduce((sum,m)=>sum+Number(m.amount||0),0):0;
+  const totalWithdrawals=Array.isArray(capitalWithdrawals)?capitalWithdrawals.reduce((sum,m)=>sum+Number(m.amount||0),0):0;
+  const totalDeterioration=Array.isArray(deteriorationExits)?deteriorationExits.reduce((sum,m)=>sum+Number(m.amount||0),0):0;
+  const current=Number(capitalInitial||0)+totalSales+totalInjections-totalWithdrawals-totalDeterioration;
   const todayProfit=getTodayProfit();
   const cash=getCashInBox();
   const initialEl=document.getElementById("capitalInitialDisplay");
