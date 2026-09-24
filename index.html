@@ -165,7 +165,7 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 <div class="capital-card"><div class="capital-label">Ganancia acumulada</div><div id="capitalProfitDisplay" class="capital-value capital-profit">$0.00</div></div>
 <div class="capital-card capital-main"><div class="capital-label">Capital actual</div><div id="capitalCurrentDisplay" class="capital-value">$0.00</div></div>
 </div>
-<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>capital actual</strong> se calcula como: capital inicial + ventas + inyecciones de capital − retiros de efectivo del capital − salidas del negocio por deterioro o mal estado. El efectivo en caja, la ganancia y el inventario se controlan por separado.</div>
+<div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>capital actual</strong> se calcula como: capital inicial + ganancia acumulada + inyecciones de capital − retiros de capital − salidas del negocio por deterioro o mal estado. El efectivo en caja, la ganancia y el inventario se controlan por separado.</div>
 <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
 <button class="secondary" style="width:100%" onclick="registerCapitalInjection()">➕ Inyectar capital</button>
 <button class="secondary" style="width:100%" onclick="registerCapitalWithdrawal()">➖ Retirar capital</button>
@@ -1792,7 +1792,7 @@ updateOfflineStatus();
     const totalInjections=(Array.isArray(capitalInjections)?capitalInjections:[]).reduce((sum,m)=>sum+Number(m.amount||0),0);
     const totalWithdrawals=(Array.isArray(capitalWithdrawals)?capitalWithdrawals:[]).reduce((sum,m)=>sum+Number(m.amount||0),0);
     const totalDeterioration=(Array.isArray(deteriorationExits)?deteriorationExits:[]).reduce((sum,m)=>sum+Number(m.amount||0),0);
-    const currentCapital=Number(capitalInitial||0)+totalSalesForCapital+totalInjections-totalWithdrawals-totalDeterioration;
+    const currentCapital=Number(capitalInitial||0)+getAccumulatedProfit()+totalInjections-totalWithdrawals-totalDeterioration;
     const currentEl=document.getElementById("capitalCurrentDisplay");
     if(currentEl)currentEl.textContent=money(currentCapital);
     const capitalHint=document.getElementById("capitalTodayProfit");
