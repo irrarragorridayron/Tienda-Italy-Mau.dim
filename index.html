@@ -77,24 +77,6 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 </style>
 </head>
 <body>
-<div id="authOverlay" class="auth-overlay">
-  <div class="auth-box">
-    <div class="auth-logo">🏪</div>
-    <h2>Acceso a Tienda Italy Mau.dim</h2>
-    <p>Inicia sesión para trabajar con el inventario y las ventas compartidas.</p>
-    <div id="authStatus" class="auth-status"></div>
-    <label>Correo electrónico</label>
-    <input id="authEmail" type="email" autocomplete="username" placeholder="correo@ejemplo.com">
-    <label>Contraseña</label>
-    <input id="authPassword" type="password" autocomplete="current-password" placeholder="Contraseña">
-    <button class="primary" style="margin-top:14px" onclick="cloudLogin()">🔐 Iniciar sesión</button>
-    <button class="secondary" style="width:100%;margin-top:8px" onclick="cloudLogout()">Cerrar sesión</button>
-    <div class="hint" style="margin-top:14px;margin-bottom:0">Las cuentas de los vendedores se crean en Supabase → Authentication → Users. No uses la clave <strong>service_role</strong> en esta aplicación.</div>
-  </div>
-</div>
-<div id="userBar" class="user-bar" style="display:none">
-  <span id="userIdentity">👤</span><span id="userRole"></span><button onclick="cloudLogout()">Salir</button>
-</div>
 <div id="offlineStatus" class="offline-status" style="display:none">☁️ Conectado</div>
 
 <header>
@@ -859,7 +841,7 @@ function normalizeRole(role){
   const r=String(role||"").trim().toLowerCase();
   return (r==="admin"||r==="administrador"||r==="administrator")?"admin":"vendedor";
 }
-function isAdmin(){return !!cloudUser && normalizeRole(cloudProfile?.role)==="admin"}
+function isAdmin(){return true}
 function refreshAdminUI(){
   const admin=isAdmin();
   const tools=document.getElementById("adminToolsCard");
@@ -1522,14 +1504,22 @@ updateOfflineStatus();
   try{pendingSales=[];savePendingSales()}catch(e){}
   try{syncOperations=[];saveSyncOperations()}catch(e){}
 
-  // Si el usuario ya tiene una sesión de administrador guardada, se conserva.
-  // Si no hay sesión, la app seguirá mostrando el acceso normal para validarlo
-  // una vez; después podrá abrirse sin Internet usando el perfil almacenado.
+  // MODO ADMINISTRADOR ÚNICO: no se requiere sesión, Supabase ni Internet para abrir la app.
+  // El administrador trabaja directamente con la copia local de este teléfono.
+  cloudUser={id:"local-admin",email:"admin@local",offline:true};
+  cloudProfile={name:"Administrador",role:"admin",offline:true};
+  try{localStorage.setItem("italy_admin_mode","local")}catch(e){}
+  const authOverlay=document.getElementById("authOverlay");
+  if(authOverlay)authOverlay.remove();
+  const userBar=document.getElementById("userBar");
+  if(userBar)userBar.remove();
   window.addEventListener("offline",()=>{loadLocal();renderAll()});
+  window.addEventListener("online",()=>{loadLocal();renderAll()});
   loadLocal();renderAll();
 })();
 
-initCloud();
+// IMPORTANTE: no se llama initCloud(). Supabase queda completamente fuera del arranque.
+
 </script>
 
 <script>
