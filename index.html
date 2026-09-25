@@ -1679,14 +1679,26 @@ updateOfflineStatus();
       },0);
   }
 
+  function cashCapitalInjections(){
+    return (Array.isArray(capitalInjections)?capitalInjections:[])
+      .reduce((sum,m)=>sum+(Number(m.amount)||0),0);
+  }
+  function cashCapitalWithdrawals(){
+    return (Array.isArray(capitalWithdrawals)?capitalWithdrawals:[])
+      .reduce((sum,m)=>sum+(Number(m.amount)||0),0);
+  }
+
   window.getCashInBox=function(){
-    // Fórmula de caja física:
-    // capital inicial - compras pagadas en efectivo + ventas en efectivo
-    // + mercancía retirada para uso personal y pagada al costo - otros gastos de caja.
+    // EFECTIVO REAL EN CAJA:
+    // efectivo inicial + inyecciones + ventas en efectivo + retiros personales
+    // cobrados al costo - compras en efectivo - retiros de capital - gastos de caja.
+    // La ganancia y el valor del inventario NO se suman/restan directamente.
     return Number(capitalInitial||0)
+      + cashCapitalInjections()
       + cashSales()
       + personalCash()
       - cashPurchases()
+      - cashCapitalWithdrawals()
       - cashExpenses();
   };
 
