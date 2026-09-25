@@ -585,6 +585,73 @@ main{max-width:1120px}
   .offline-status{top:100px!important}
 }
 
+
+/* ===== V5.2 — FOTO COMO ELEMENTO PRINCIPAL DE LA TARJETA ===== */
+#screen-sale .product-card{
+  padding:8px 8px 12px;
+  min-height:0;
+  justify-content:flex-start;
+}
+#screen-sale .product-photo-wrap{
+  width:100%;
+  height:148px;
+  flex:0 0 148px;
+  margin:0 0 10px;
+  border-radius:15px;
+  background:
+    radial-gradient(circle at 50% 35%,rgba(233,184,75,.12),transparent 58%),
+    linear-gradient(145deg,#25231f,#0b0b0b);
+  border:1px solid rgba(233,184,75,.30);
+  box-shadow:inset 0 1px #ffffff12,0 7px 16px #0009;
+}
+#screen-sale .product-photo{
+  width:100%;height:100%;
+  display:block;
+  object-fit:contain;
+  object-position:center;
+  padding:4px;
+  filter:drop-shadow(0 5px 9px #000b);
+}
+#screen-sale .product-photo-placeholder{
+  width:68px;height:68px;
+  border-radius:18px;
+  color:#f1cf79;
+  font-size:25px;
+  border:1px solid rgba(233,184,75,.40);
+  background:linear-gradient(145deg,#342b1b,#111);
+  box-shadow:inset 0 1px #fff2,0 6px 14px #0009;
+}
+#screen-sale .product-name{
+  min-height:38px;
+  font-size:14px;
+  line-height:1.25;
+}
+#screen-sale .product-price{font-size:19px;margin-top:4px}
+#screen-sale .stock{font-size:11px;margin-top:6px;padding:5px 10px}
+#screen-sale .product-photo-hint{
+  top:15px;right:15px;
+  width:36px;height:36px;
+  border-radius:50%;
+  font-size:17px;
+  background:#090909e8;
+  border:1px solid #e9b84b99;
+  box-shadow:0 4px 12px #000b,0 0 12px #e9b84b22;
+}
+#screen-sale .product-card.has-photo .product-photo-wrap{
+  border-color:#e9b84b55;
+}
+@media(max-width:599px){
+  #screen-sale .product-card{padding:8px 8px 12px}
+  #screen-sale .product-photo-wrap{height:148px;flex-basis:148px}
+  #screen-sale .product-name{font-size:14px}
+  #screen-sale .product-price{font-size:18px}
+}
+@media(min-width:600px){
+  #screen-sale .product-photo-wrap{height:170px;flex-basis:170px}
+  #screen-sale .product-name{font-size:15px}
+  #screen-sale .product-price{font-size:20px}
+}
+
 </style>
 </head>
 <body>
