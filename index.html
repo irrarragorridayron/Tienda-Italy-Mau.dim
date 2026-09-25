@@ -530,8 +530,13 @@ main{max-width:1120px}
 #productPhotoBox{margin-top:4px;padding:12px;border-radius:15px;background:#ffffff06;border:1px solid #e9b84b22}
 #productPhotoPreview{display:none;width:92px;height:92px;margin:8px auto 10px;object-fit:cover;border-radius:15px;border:1px solid #e9b84b55;background:#111;box-shadow:0 5px 14px #0008}
 #productPhotoPreview.show{display:block}
-#productPhotoStatus{font-size:12px;color:#aaa;text-align:center;margin-top:6px;min-height:16px}
-#productPhotoInput{width:100%;padding:10px;border-radius:11px;background:#101010;border:1px solid #e9b84b33;color:#eee}
+#productPhotoStatus{font-size:12px;color:#aaa;text-align:center;margin-top:8px;min-height:16px}
+.product-photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.product-photo-action{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:10px 8px;border-radius:12px;background:linear-gradient(145deg,#211d18,#111);border:1px solid #e9b84b55;color:#f5dfa5;font-weight:700;font-size:13px;cursor:pointer}
+.product-photo-action.gallery{border-color:#f02a9b55;color:#f5b7dc}
+.product-photo-action:active{transform:scale(.98)}
+.product-photo-file{display:none!important}
+@media(max-width:380px){.product-photo-actions{grid-template-columns:1fr}.product-photo-action{min-height:42px}}
 
 /* ===== INDICADOR OFFLINE — INTEGRADO SIN ALTERAR LA COMPOSICIÓN ===== */
 .offline-status{
@@ -788,7 +793,12 @@ main{max-width:1120px}
 <label>Nombre del producto</label><input id="productName" type="text" placeholder="Ej. Refresco">
 <label>Precio de venta</label><input id="productPrice" type="number" min="0" step="0.01" placeholder="0.00">
 <label>Costo de compra (opcional)</label><input id="productCost" type="number" min="0" step="0.01" placeholder="Puede cambiar según la compra">
-<div id="productPhotoBox"><label>Foto del producto (opcional)</label><img id="productPhotoPreview" alt="Vista previa del producto"><input id="productPhotoInput" type="file" accept="image/*" capture="environment" onchange="prepareProductPhoto(this)"><div id="productPhotoStatus">Puedes tomar una foto con la cámara o elegirla del teléfono.</div></div>
+<div id="productPhotoBox"><label>Foto del producto (opcional)</label><img id="productPhotoPreview" alt="Vista previa del producto">
+<div class="product-photo-actions">
+  <button type="button" class="product-photo-action gallery" onclick="document.getElementById('productPhotoInput').click()">🖼️ Elegir foto de la galería</button>
+</div>
+<input id="productPhotoInput" class="product-photo-file" type="file" accept="image/*" onchange="prepareProductPhoto(this)">
+<div id="productPhotoStatus">Elige una foto de la galería para este producto.</div></div>
 <div class="form-grid">
 <div><label>Existencias</label><input id="productStock" type="number" min="0" step="1" placeholder="0"></div>
 <div><label>Unidad</label><select id="productUnit"><option value="unidad">Unidad</option><option value="libra">Libra</option><option value="kg">Kilogramo</option></select></div>
@@ -885,7 +895,7 @@ function prepareProductPhoto(input){
   const file=input?.files?.[0];
   const preview=document.getElementById("productPhotoPreview");
   const status=document.getElementById("productPhotoStatus");
-  if(!file){pendingProductPhoto="";if(preview){preview.src="";preview.classList.remove("show")}if(status)status.textContent="Puedes tomar una foto con la cámara o elegirla del teléfono.";return}
+  if(!file){pendingProductPhoto="";if(preview){preview.src="";preview.classList.remove("show")}if(status)status.textContent="Elige una foto de la galería para este producto.";return}
   if(!file.type.startsWith("image/")){input.value="";pendingProductPhoto="";if(status)status.textContent="Selecciona una imagen válida.";return}
   status.textContent="Procesando foto…";
   const reader=new FileReader();
@@ -914,7 +924,7 @@ function resetProductPhotoUI(existing=""){
     if(status)status.textContent="Foto actual. Elige otra si quieres reemplazarla.";
   }else{
     if(preview){preview.src="";preview.classList.remove("show")}
-    if(status)status.textContent="Puedes tomar una foto con la cámara o elegirla del teléfono.";
+    if(status)status.textContent="Elige una foto de la galería para este producto.";
   }
 }
 
