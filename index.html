@@ -95,14 +95,51 @@ label{display:block;font-weight:bold;margin-bottom:6px;font-size:14px}input,sele
 .sale-reverted-badge{display:inline-block;background:#ffe4e1;color:#b42318;border-radius:8px;padding:3px 7px;font-size:11px;font-weight:bold}
 .sale-number{font-weight:bold;color:#16803c}
 @media(max-width:599px){.ipv-table th:first-child,.ipv-table td:first-child{min-width:125px;max-width:150px}.ipv-fullscreen{padding:7px}.ipv-fullscreen .ipv-table-wrap{height:calc(100vh - 225px)}}
+
+/* ===== ITALY MAU.DIM — REDISEÑO VISUAL PREMIUM ===== */
+:root{--im-black:#070707;--im-black2:#101010;--im-card:#151515;--im-card2:#1b1b1b;--im-gold:#e9b84b;--im-gold2:#ffd978;--im-pink:#f02a9b;--im-purple:#8b45e8;--im-text:#f7f3ea;--im-muted:#aaa39a;--im-border:rgba(233,184,75,.22)}
+html{background:var(--im-black)}
+body{background:radial-gradient(circle at 50% -10%,#29201a 0,#0c0c0c 34%,#050505 75%);color:var(--im-text);font-family:Arial,Helvetica,sans-serif}
+header{background:linear-gradient(145deg,#050505 0%,#17120c 55%,#070707 100%);border-bottom:1px solid var(--im-border);box-shadow:0 8px 28px #000b;padding:18px 16px 16px}
+header h1{font-size:25px;letter-spacing:.4px;background:linear-gradient(90deg,#fff4c7,var(--im-gold2),#fff1b5);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 18px #e9b84b33}
+header h1:before{content:'👑 ';color:var(--im-gold)}
+header p{color:#c8bfae;font-size:12px;letter-spacing:.5px}
+main{max-width:760px;padding:16px 14px 92px}.section-title{font-size:22px;color:#fff;margin:4px 0 8px}.subtitle{color:var(--im-muted);font-size:13px;margin-bottom:17px}
+.screen.active{animation:imFade .22s ease-out}@keyframes imFade{from{opacity:.65;transform:translateY(3px)}to{opacity:1;transform:none}}
+.card,.product-card,.inventory-item,.sale-item,.product-admin-item,.stat,.capital-card,.ipv-history-item{background:linear-gradient(145deg,#1b1b1b,#111);border:1px solid var(--im-border);box-shadow:0 8px 24px #0007,inset 0 1px #ffffff08;color:var(--im-text)}
+.card{border-radius:20px;padding:17px;margin-bottom:15px}.product-card{border-radius:18px;padding:17px 12px}.product-card:active{transform:scale(.97);border-color:var(--im-gold)}
+.product-icon{font-size:38px;filter:drop-shadow(0 0 8px #e9b84b33)}.product-name{color:#fff}.product-price{color:#67e39b}.stock{color:#9e988e}.stock.low{color:#ff6e75}
+button.primary{background:linear-gradient(135deg,#f5c95b,#c88b21);color:#130f08;border:1px solid #ffe49a;box-shadow:0 7px 18px #e9b84b2b;font-weight:800}button.primary:active{transform:scale(.98)}
+button.secondary{background:linear-gradient(135deg,#252525,#161616);color:#f4e8ca;border:1px solid #ffffff14;box-shadow:0 4px 12px #0006}button.secondary:active{border-color:var(--im-gold)}
+button.danger{background:linear-gradient(135deg,#3a171b,#241013);color:#ff9ba0;border:1px solid #ff66701f}
+input,select{background:#0d0d0d;color:#fff;border:1px solid #3a352d;box-shadow:inset 0 1px 5px #0008}input:focus,select:focus{border-color:var(--im-gold);box-shadow:0 0 0 2px #e9b84b1c}
+label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border:1px solid #ffffff0b;color:#aaa39a}.hint strong{color:#f1d078}
+.total-box,.ipv-total-card,.capital-main{background:linear-gradient(145deg,#211b12,#0a0a0a);border:1px solid #e9b84b55;box-shadow:0 10px 28px #0009,inset 0 1px #fff2}
+.total-final{border-top-color:#4b4437}.total-box .primary{margin-top:14px}
+.stats-grid{gap:11px}.stat{border-radius:17px;padding:15px}.stat-label{color:#a59e94}.stat-value{color:#fff}.stat-profit{border-left:4px solid #35d98a}.stat-profit .stat-value{color:#64e6a0}.stat-cash{border-left:4px solid var(--im-gold)}.stat-cash .stat-value{color:var(--im-gold2)}
+.capital-grid{gap:11px}.capital-card{border-radius:17px}.capital-label{color:#9e978d}.capital-main .capital-label{color:#c9bda6}.capital-main .capital-value{color:var(--im-gold2)}.capital-profit{color:#64e6a0}
+.ipv-grand-total{color:var(--im-gold2);text-shadow:0 0 14px #e9b84b44}.ipv-table th{background:#15110c;color:#f8dda0;border-bottom:1px solid #e9b84b44}.ipv-table td{border-bottom-color:#ffffff0c;color:#ddd}.ipv-amount{color:#64e6a0}
+.ipv-table th:first-child,.ipv-table td:first-child{background:#151515;color:#eee}.ipv-table th:first-child{background:#15110c;color:#f8dda0}
+.bottom-nav{height:76px;background:rgba(9,9,9,.96);backdrop-filter:blur(14px);border-top:1px solid #e9b84b38;box-shadow:0 -8px 25px #000b}.nav-btn{background:transparent;color:#888;border-top:2px solid transparent}.nav-btn span{font-size:23px}.nav-btn.active{color:var(--im-gold2);border-top-color:var(--im-gold);text-shadow:0 0 10px #e9b84b55}
+.modal{background:#000d;backdrop-filter:blur(5px)}.modal-content{background:linear-gradient(145deg,#1d1d1d,#0e0e0e);border:1px solid #e9b84b45;box-shadow:0 20px 60px #000c;color:#fff}.close{background:#262626;color:#fff;border:1px solid #ffffff12}
+.empty{color:#918b82}.positive{color:#64e6a0}.negative{color:#ff737b}.sale-number{color:var(--im-gold2)}.sale-date,.inventory-details,.sale-products{color:#989188}
+.auth-overlay{background:radial-gradient(circle at 50% 20%,#251a24,#070707 60%)}.auth-box{background:linear-gradient(145deg,#1d1d1d,#0d0d0d);border:1px solid #e9b84b45;color:#fff}.auth-box>p{color:#aaa}.auth-box h2{color:var(--im-gold2)}
+.user-bar{background:#151515;color:#eee;border:1px solid #e9b84b30;box-shadow:0 5px 20px #0009}.user-bar button{background:#252525;color:#f4d681}.offline-status{background:#168b55;border:1px solid #7bf0ae55}.offline-status.offline{background:#9f2b35}.offline-status.pending{background:#9a5a00}
+.cloud-badge{background:#168b55}.ipv-history-total{color:var(--im-gold2)}
+.inventory-stock{color:#fff}.sale-total{color:var(--im-gold2)}
+/* Brand accents */
+.section-title:after{content:'';display:block;width:54px;height:3px;margin-top:7px;border-radius:5px;background:linear-gradient(90deg,var(--im-gold),var(--im-pink));box-shadow:0 0 10px #f02a9b55}
+.screen[id="screen-sale"]>.subtitle{margin-bottom:13px}.screen[id="screen-sale"]:before{content:'ITALY MAU.DIM  •  TU TIENDA DE CONFIANZA';display:block;color:#d5bd86;font-size:10px;letter-spacing:1.7px;margin:0 0 12px}
+@media(max-width:599px){main{padding-left:12px;padding-right:12px}.section-title{font-size:21px}.product-card{padding:15px 10px}.card{border-radius:18px}.bottom-nav{height:72px}}
+
 </style>
 </head>
 <body>
 <div id="offlineStatus" class="offline-status" style="display:none">☁️ Conectado</div>
 
 <header>
-<h1>🏪 Tienda Italy Mau.dim</h1>
-<p>Ventas e inventario offline · v11</p>
+<h1>Italy Mau.dim</h1>
+<p>TIENDA · Ventas e inventario · Offline + nube</p>
 </header>
 
 <main>
