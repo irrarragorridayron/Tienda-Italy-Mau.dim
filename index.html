@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#111111">
-<meta name="app-version" content="11">
+<meta name="theme-color" content="#080808">
+<meta name="app-version" content="12">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>Tienda Italy Mau.dim</title>
+<title>Italy Mau.dim Tienda</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;color:#171717;padding-bottom:82px}
@@ -132,17 +132,178 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 .screen[id="screen-sale"]>.subtitle{margin-bottom:13px}.screen[id="screen-sale"]:before{content:'ITALY MAU.DIM  •  TU TIENDA DE CONFIANZA';display:block;color:#d5bd86;font-size:10px;letter-spacing:1.7px;margin:0 0 12px}
 @media(max-width:599px){main{padding-left:12px;padding-right:12px}.section-title{font-size:21px}.product-card{padding:15px 10px}.card{border-radius:18px}.bottom-nav{height:72px}}
 
+
+/* ===== ITALY MAU.DIM TIENDA — IDENTIDAD OFICIAL V1 ===== */
+.brand-header{
+  padding:12px 12px 10px!important;
+  min-height:118px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(circle at 50% 0%,rgba(233,184,75,.13),transparent 45%),
+    linear-gradient(145deg,#050505 0%,#0d0a08 52%,#050505 100%)!important;
+}
+.brand-header .brand-logo{
+  width:min(92vw,520px);
+  max-height:92px;
+  object-fit:contain;
+  display:block;
+  filter:drop-shadow(0 7px 18px rgba(233,184,75,.16));
+}
+.brand-header .brand-fallback{display:none}
+.home-hero{
+  background:
+    radial-gradient(circle at 50% 0%,rgba(240,42,155,.11),transparent 35%),
+    linear-gradient(145deg,#17130e,#0b0b0b 62%,#101010);
+  border:1px solid rgba(233,184,75,.34);
+  border-radius:24px;
+  padding:16px 14px 18px;
+  box-shadow:0 14px 38px #0009,inset 0 1px #fff2;
+  margin-bottom:16px;
+}
+.home-logo{
+  width:100%;
+  max-height:145px;
+  object-fit:contain;
+  display:block;
+  margin:0 auto 6px;
+}
+.home-kicker{text-align:center;color:#d7bc7d;font-size:10px;letter-spacing:2px;font-weight:700}
+.home-title{text-align:center;margin:5px 0 2px;font-size:24px;color:#fff}
+.home-subtitle{text-align:center;color:#b8afa2;font-size:12px;margin:0}
+.dashboard-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.dashboard-card{
+  position:relative;
+  min-height:142px;
+  border:1px solid rgba(233,184,75,.32);
+  border-radius:21px;
+  padding:13px 10px 12px;
+  background:linear-gradient(145deg,#1d1d1d,#0d0d0d);
+  box-shadow:0 9px 25px #0008,inset 0 1px #fff1;
+  color:#fff;
+  cursor:pointer;
+  overflow:hidden;
+  transition:transform .14s,border-color .14s,box-shadow .14s;
+}
+.dashboard-card:active{transform:scale(.97);border-color:#ffd978;box-shadow:0 5px 15px #000}
+.dashboard-card img{
+  width:88px;height:78px;object-fit:contain;display:block;margin:0 auto 7px;
+  filter:drop-shadow(0 5px 9px rgba(233,184,75,.18));
+}
+.dashboard-card strong{display:block;text-align:center;font-size:14px;color:#f7e6b4}
+.dashboard-card small{display:block;text-align:center;color:#8f887e;font-size:10px;margin-top:4px}
+.dashboard-section-title{
+  margin:18px 2px 10px;color:#fff;font-size:16px;letter-spacing:.3px
+}
+.dashboard-section-title:after{
+  content:'';display:block;width:48px;height:3px;margin-top:6px;border-radius:5px;
+  background:linear-gradient(90deg,var(--im-gold),var(--im-pink))
+}
+.home-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px}
+.home-stat{
+  background:linear-gradient(145deg,#181818,#0d0d0d);
+  border:1px solid rgba(233,184,75,.18);border-radius:16px;padding:12px;
+}
+.home-stat .label{font-size:10px;color:#928b82;text-transform:uppercase}
+.home-stat .value{font-size:19px;font-weight:800;color:#ffd978;margin-top:5px}
+.home-stat.green .value{color:#64e6a0}
+.more-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.more-item{
+  border:1px solid rgba(233,184,75,.25);border-radius:17px;padding:12px;
+  background:linear-gradient(145deg,#191919,#0d0d0d);color:#fff;text-align:center
+}
+.more-item img{width:66px;height:58px;object-fit:contain;display:block;margin:0 auto 6px}
+.more-item strong{font-size:12px;color:#f5dfa5}
+.more-item:active{transform:scale(.98);border-color:#ffd978}
+.more-note{font-size:11px;color:#99928a;text-align:center;margin:12px 2px 0;line-height:1.45}
+.more-modal-content{max-width:560px}
+.more-modal-content .modal-header{border-bottom:1px solid rgba(233,184,75,.15);padding-bottom:12px}
+.nav-btn .nav-icon-img{width:30px;height:30px;object-fit:contain;display:block;margin:0 auto 2px}
+.nav-btn.active .nav-icon-img{filter:drop-shadow(0 0 7px rgba(233,184,75,.55))}
+.nav-btn{font-size:10px!important}
+@media(max-width:599px){
+  .brand-header{min-height:94px;padding:9px 10px 8px!important}
+  .brand-header .brand-logo{max-height:76px}
+  .home-logo{max-height:115px}
+  .dashboard-card{min-height:130px}
+  .dashboard-card img{width:78px;height:70px}
+}
+@media(min-width:700px){
+  .dashboard-grid{grid-template-columns:repeat(4,1fr)}
+  .home-stats{grid-template-columns:repeat(4,1fr)}
+}
+
 </style>
 </head>
 <body>
 <div id="offlineStatus" class="offline-status" style="display:none">☁️ Conectado</div>
 
-<header>
-<h1>Italy Mau.dim</h1>
-<p>TIENDA · Ventas e inventario · Offline + nube</p>
+<header class="brand-header">
+  <img class="brand-logo" src="./assets/logo-horizontal.png" alt="Italy Mau.dim Tienda">
+  <div class="brand-fallback"><h1>Italy Mau.dim</h1><p>TIENDA · Ventas e inventario · Offline + nube</p></div>
 </header>
 
 <main>
+<section id="screen-home" class="screen active">
+  <div class="home-hero">
+    <img class="home-logo" src="./assets/logo-horizontal.png" alt="Italy Mau.dim Tienda">
+    <div class="home-kicker">PANEL PRINCIPAL · ADMINISTRADOR</div>
+    <h2 class="home-title">Tu tienda, en un solo lugar</h2>
+    <p class="home-subtitle">Ventas · Inventario · Capital · Caja · Trabajo offline</p>
+    <div class="home-stats">
+      <div class="home-stat"><div class="label">Ventas hoy</div><div id="homeSalesCount" class="value">0</div></div>
+      <div class="home-stat"><div class="label">Vendido hoy</div><div id="homeSalesTotal" class="value">$0.00</div></div>
+      <div class="home-stat green"><div class="label">Ganancia hoy</div><div id="homeProfit" class="value">$0.00</div></div>
+      <div class="home-stat"><div class="label">Efectivo en caja</div><div id="homeCash" class="value">$0.00</div></div>
+    </div>
+  </div>
+
+  <h3 class="dashboard-section-title">Módulos principales</h3>
+  <div class="dashboard-grid">
+    <button class="dashboard-card" onclick="showScreen('products')">
+      <img src="./assets/icon-productos.png" alt="">
+      <strong>Productos</strong><small>Catálogo y administración</small>
+    </button>
+    <button class="dashboard-card" onclick="showScreen('sales')">
+      <img src="./assets/icon-ventas.png" alt="">
+      <strong>Ventas</strong><small>Historial y ganancias</small>
+    </button>
+    <button class="dashboard-card" onclick="showScreen('inventory')">
+      <img src="./assets/icon-inventario.png" alt="">
+      <strong>Inventario</strong><small>IPV y existencias</small>
+    </button>
+    <button class="dashboard-card" onclick="openProductModal()">
+      <img src="./assets/icon-agregar.png" alt="">
+      <strong>Agregar producto</strong><small>Alta rápida</small>
+    </button>
+  </div>
+
+  <h3 class="dashboard-section-title">Acciones rápidas</h3>
+  <div class="dashboard-grid">
+    <button class="dashboard-card" onclick="showScreen('sale')">
+      <img src="./assets/icon-ventas.png" alt="">
+      <strong>Nueva venta</strong><small>Abrir punto de venta</small>
+    </button>
+    <button class="dashboard-card" onclick="showScreen('inventory')">
+      <img src="./assets/icon-inventario.png" alt="">
+      <strong>IPV</strong><small>Control diario</small>
+    </button>
+    <button class="dashboard-card" onclick="showMoreMenu()">
+      <img src="./assets/icon-configuracion.png" alt="">
+      <strong>Más opciones</strong><small>Caja y herramientas</small>
+    </button>
+    <button class="dashboard-card" onclick="document.getElementById('offlineStatus').scrollIntoView({behavior:'smooth',block:'center'})">
+      <img src="./assets/icon-ayuda.png" alt="">
+      <strong>Estado offline</strong><small>Datos guardados en este teléfono</small>
+    </button>
+  </div>
+</section>
+
 <section id="screen-sale" class="screen active">
 <h2 class="section-title">🛒 Nueva venta</h2>
 <p class="subtitle">Toca un producto para añadirlo al carrito.</p>
@@ -242,11 +403,28 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 </main>
 
 <nav class="bottom-nav">
-<button class="nav-btn active" onclick="showScreen('sale',this)"><span>🛒</span>Vender</button>
-<button class="nav-btn" onclick="showScreen('inventory',this)"><span>📦</span>Inventario</button>
-<button class="nav-btn" onclick="showScreen('sales',this)"><span>📊</span>Ventas</button>
-<button class="nav-btn" onclick="showScreen('products',this)"><span>⚙️</span>Productos</button>
+<button class="nav-btn active" onclick="showScreen('home',this)"><img class="nav-icon-img" src="./assets/icon-inicio.png" alt="">Inicio</button>
+<button class="nav-btn" onclick="showScreen('sale',this)"><img class="nav-icon-img" src="./assets/icon-ventas.png" alt="">Vender</button>
+<button class="nav-btn" onclick="showScreen('inventory',this)"><img class="nav-icon-img" src="./assets/icon-inventario.png" alt="">Inventario</button>
+<button class="nav-btn" onclick="showMoreMenu()"><img class="nav-icon-img" src="./assets/icon-configuracion.png" alt="">Más</button>
 </nav>
+
+<div id="moreModal" class="modal">
+  <div class="modal-content more-modal-content">
+    <div class="modal-header"><h2>Más opciones</h2><button class="close" onclick="closeMoreMenu()">×</button></div>
+    <div class="more-grid">
+      <button class="more-item" onclick="closeMoreMenu();showScreen('products')"><img src="./assets/icon-productos.png" alt=""><strong>Productos</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();showScreen('sales')"><img src="./assets/icon-reportes.png" alt=""><strong>Reportes / ventas</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();openProductModal()"><img src="./assets/icon-agregar.png" alt=""><strong>Agregar producto</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();showScreen('sales');setTimeout(()=>document.getElementById('capitalInitialInput')?.scrollIntoView({behavior:'smooth',block:'center'}),150)"><img src="./assets/icon-caja.png" alt=""><strong>Caja y capital</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();showScreen('inventory');setTimeout(()=>document.getElementById('dailyIPVContainer')?.scrollIntoView({behavior:'smooth',block:'center'}),150)"><img src="./assets/icon-historial.png" alt=""><strong>Historial IPV</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();showScreen('products');setTimeout(()=>document.getElementById('adminToolsCard')?.scrollIntoView({behavior:'smooth',block:'center'}),150)"><img src="./assets/icon-configuracion.png" alt=""><strong>Configuración</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();showScreen('products');setTimeout(()=>document.getElementById('importCloudBtn')?.click(),250)"><img src="./assets/icon-nube.png" alt=""><strong>Importar a la nube</strong></button>
+      <button class="more-item" onclick="closeMoreMenu();alert('La versión actual está configurada para administrador único y trabajo offline. El módulo de usuarios queda reservado para la futura versión multiusuario.')"><img src="./assets/icon-usuarios.png" alt=""><strong>Usuarios</strong></button>
+    </div>
+    <div class="more-note">Los accesos muestran únicamente funciones que ya existen en la aplicación actual. No se inventan módulos que todavía no están implementados.</div>
+  </div>
+</div>
 
 <div id="productModal" class="modal">
 <div class="modal-content">
@@ -2048,6 +2226,46 @@ updateOfflineStatus();
   // Después de cargar el modo offline, asegurar que los números estén visibles.
   setTimeout(()=>{ensureSaleNumbers();if(typeof renderSales==='function')renderSales();},0);
 })();
+</script>
+
+<script>
+/* ===== DASHBOARD ITALY MAU.DIM V1 ===== */
+function showMoreMenu(){
+  const m=document.getElementById("moreModal");
+  if(m)m.classList.add("show");
+}
+function closeMoreMenu(){
+  const m=document.getElementById("moreModal");
+  if(m)m.classList.remove("show");
+}
+function renderHomeDashboard(){
+  const today=localDateKey();
+  const ts=Array.isArray(sales)?sales.filter(s=>localDateKey(s.date)===today):[];
+  const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
+  set("homeSalesCount",String(ts.length));
+  set("homeSalesTotal",money(ts.reduce((a,s)=>a+Number(s.total||0),0)));
+  set("homeProfit",money(ts.reduce((a,s)=>a+Number(s.profit||0),0)));
+  set("homeCash",money(getCashInBox()));
+}
+const _italyOriginalShowScreen=showScreen;
+showScreen=function(name,btn){
+  if(name==="home"){
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    const home=document.getElementById("screen-home");
+    if(home)home.classList.add("active");
+    document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+    if(btn)btn.classList.add("active");
+    renderHomeDashboard();
+    window.scrollTo(0,0);
+    return;
+  }
+  _italyOriginalShowScreen(name,btn);
+  renderHomeDashboard();
+};
+document.addEventListener("click",e=>{
+  if(e.target && e.target.id==="moreModal")closeMoreMenu();
+});
+renderHomeDashboard();
 </script>
 </body>
 </html>

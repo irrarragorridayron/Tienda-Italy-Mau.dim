@@ -1,7 +1,7 @@
 {
   "name": "Italy Mau.dim Tienda",
   "short_name": "Italy Mau.dim",
-  "description": "Sistema de ventas, inventario y caja de Italy Mau.dim.",
+  "description": "Sistema de ventas, inventario, capital y caja de Italy Mau.dim.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

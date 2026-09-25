@@ -1,11 +1,26 @@
-const CACHE_NAME = "italy-mau-admin-offline-v9";
+const CACHE_NAME = "italy-mau-tienda-offline-v12";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./assets/logo-horizontal.png",
+  "./assets/logo-square.png",
+  "./assets/icon-inicio.png",
+  "./assets/icon-productos.png",
+  "./assets/icon-ventas.png",
+  "./assets/icon-inventario.png",
+  "./assets/icon-reportes.png",
+  "./assets/icon-agregar.png",
+  "./assets/icon-nube.png",
+  "./assets/icon-configuracion.png",
+  "./assets/icon-usuarios.png",
+  "./assets/icon-caja.png",
+  "./assets/icon-historial.png",
+  "./assets/icon-ayuda.png",
+  "./assets/icon-cerrar-sesion.png"
 ];
 
 self.addEventListener("install", event => {
@@ -30,64 +45,37 @@ self.addEventListener("activate", event => {
 
 self.addEventListener("fetch", event => {
   const request = event.request;
-
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-
-  // Solo archivos del mismo sitio
   if (url.origin !== self.location.origin) return;
 
-  // Para index.html usamos red primero.
-  // Si no hay Internet, usamos la copia guardada.
-  if (
-    request.mode === "navigate" ||
-    url.pathname.endsWith("/index.html")
-  ) {
+  if (request.mode === "navigate" || url.pathname.endsWith("/index.html")) {
     event.respondWith(
       fetch(request)
         .then(response => {
           if (response && response.ok) {
             const copy = response.clone();
-
-            caches.open(CACHE_NAME).then(cache => {
-              cache.put(request, copy);
-            });
+            caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
           }
-
           return response;
         })
-        .catch(() => {
-          return caches.match("./index.html");
-        })
+        .catch(() => caches.match("./index.html"))
     );
-
     return;
   }
 
-  // Para los demás archivos:
-  // primero intenta la copia offline.
   event.respondWith(
     caches.match(request).then(cachedResponse => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      if (cachedResponse) return cachedResponse;
 
-      return fetch(request)
-        .then(response => {
-          if (response && response.ok) {
-            const copy = response.clone();
-
-            caches.open(CACHE_NAME).then(cache => {
-              cache.put(request, copy);
-            });
-          }
-
-          return response;
-        })
-        .catch(() => {
-          return Response.error();
-        });
+      return fetch(request).then(response => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+        }
+        return response;
+      }).catch(() => Response.error());
     })
   );
 });
