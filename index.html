@@ -2218,21 +2218,32 @@ updateOfflineStatus();
   }
 
   window.getCashInBox=function(){
-    const cashSales=sales.reduce((sum,s)=>{
-      const method=String(s.payment||"").trim().toLowerCase();
-      return sum+(method==="efectivo"?Number(s.total||0):0);
-    },0);
-    const personalCash=personalWithdrawals().reduce((sum,m)=>{
-      const amount=Number(m.cashAmount);
-      return sum+(Number.isFinite(amount)&&amount>0?amount:(Number(m.unitCost)||0)*(Number(m.quantity)||0));
-    },0);
-    // El inventario no es efectivo líquido: se descuenta de la caja a su costo.
+    // El efectivo en caja representa la parte líquida del capital.
+    // Capital actual = efectivo en caja + mercancía existente al costo.
+    // Por tanto: efectivo en caja = capital actual - inventario al costo.
+    // La fórmula del capital actual NO se modifica aquí.
+    const profit=getAccumulatedProfit();
+    const totalInjections=Array.isArray(capitalInjections)
+      ? capitalInjections.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
+    const totalWithdrawals=Array.isArray(capitalWithdrawals)
+      ? capitalWithdrawals.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
+    const totalDeterioration=Array.isArray(deteriorationExits)
+      ? deteriorationExits.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
+
+    const currentCapital=Number(capitalInitial||0)
+      +Number(profit||0)
+      +Number(totalInjections||0)
+      -Number(totalWithdrawals||0)
+      -Number(totalDeterioration||0);
+
     const inventoryCost=products.reduce((sum,p)=>{
-      const stock=Number(p.stock)||0;
-      const cost=Number(p.cost)||0;
-      return sum+(stock>0&&cost>0?stock*cost:0);
+      const stock=Math.max(0,Number(p.stock)||0);
+      const cost=Math.max(0,Number(p.cost)||0);
+      return sum+(stock*cost);
     },0);
-    return Number(capitalInitial||0)+cashSales+personalCash-inventoryCost;
+
+    // No permitimos que la caja resulte negativa ni superior al capital actual.
+    return Math.max(0,currentCapital-inventoryCost);
   };
 
   window.getTodayPersonalWithdrawals=function(){
