@@ -1657,16 +1657,22 @@ updateOfflineStatus();
 /* ===== CONTABILIDAD DE CAJA REAL — ADMIN OFFLINE ===== */
 (function(){
   function saveCashMovements(){ saveData("italy_cash_movements",cashMovements); }
-  function cashOutflows(){
-    return cashMovements.reduce((sum,m)=>sum+(Number(m.amount)||0),0);
+  // Caja física: seguimos cada movimiento real de dinero, sin mezclarla con la ganancia.
+  function cashPurchases(){
+    return (Array.isArray(cashMovements)?cashMovements:[]).filter(m=>m&&m.type==="purchase")
+      .reduce((sum,m)=>sum+(Number(m.amount)||0),0);
+  }
+  function cashExpenses(){
+    return (Array.isArray(cashMovements)?cashMovements:[]).filter(m=>m&&m.type==="expense")
+      .reduce((sum,m)=>sum+(Number(m.amount)||0),0);
   }
   function cashSales(){
-    return sales.reduce((sum,s)=>{
+    return (Array.isArray(sales)?sales:[]).filter(s=>!s.reverted).reduce((sum,s)=>{
       return sum + (String(s.payment||"").trim().toLowerCase()==="efectivo" ? Number(s.total||0) : 0);
     },0);
   }
   function personalCash(){
-    return (Array.isArray(ipvMovements)?ipvMovements:[]).filter(m=>m&&m.type==="personal_withdrawal")
+    return (Array.isArray(ipvMovements)?ipvMovements:[]).filter(m=>m&&m.type==="personal_withdrawal"&&!m.reverted)
       .reduce((sum,m)=>{
         const a=Number(m.cashAmount);
         return sum + (Number.isFinite(a)&&a>0 ? a : (Number(m.unitCost)||0)*(Number(m.quantity)||0));
@@ -1674,7 +1680,14 @@ updateOfflineStatus();
   }
 
   window.getCashInBox=function(){
-    return Number(capitalInitial||0) + cashSales() + personalCash() - cashOutflows();
+    // Fórmula de caja física:
+    // capital inicial - compras pagadas en efectivo + ventas en efectivo
+    // + mercancía retirada para uso personal y pagada al costo - otros gastos de caja.
+    return Number(capitalInitial||0)
+      + cashSales()
+      + personalCash()
+      - cashPurchases()
+      - cashExpenses();
   };
 
   window.registerCashExpense=function(){
@@ -1770,7 +1783,7 @@ updateOfflineStatus();
     renderInventory();renderSaleProducts();renderIPVDailyHistory();renderCapital();
   };
 
-  // El capital actual representa el dinero disponible en caja + ganancia no realizada no se mezcla.
+  // La caja física se calcula por movimientos reales de efectivo; la ganancia se mantiene separada.
   const previousRender=window.renderCapital;
   window.renderCapital=function(){
     if(typeof previousRender==="function")previousRender();
@@ -1779,13 +1792,15 @@ updateOfflineStatus();
     const todayOtherExits=ipvMovements.filter(m=>m&&m.type==="exit"&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.quantity||0),0);
     const todayPersonal=ipvMovements.filter(m=>m&&m.type==="personal_withdrawal"&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.cashAmount||0),0);
     const todayCashOut=cashMovements.filter(m=>m&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.amount||0),0);
+    const todayCashPurchases=cashMovements.filter(m=>m&&m.type==="purchase"&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.amount||0),0);
+    const todayCashExpenses=cashMovements.filter(m=>m&&m.type==="expense"&&localDateKey(m.date)===today).reduce((s,m)=>s+Number(m.amount||0),0);
     const cashEl=document.getElementById("cashInBoxTotal");
     if(cashEl)cashEl.textContent=money(cash);
     const otherEl=document.getElementById("todayOtherExitsTotal");
     if(otherEl)otherEl.textContent=String(todayOtherExits);
     const el=document.getElementById("capitalTodayProfit");
     if(el){
-      el.innerHTML=`Ganancia de hoy: <strong>${money(getTodayProfit())}</strong><br>Efectivo real en caja: <strong>${money(cash)}</strong><br>Otras salidas de mercancía de hoy: <strong>${todayOtherExits}</strong> unidades<br>Retiros personales de hoy: <strong>${money(todayPersonal)}</strong><br>Salidas de efectivo de hoy: <strong>${money(todayCashOut)}</strong>`;
+      el.innerHTML=`Ganancia de hoy: <strong>${money(getTodayProfit())}</strong><br>Efectivo real en caja: <strong>${money(cash)}</strong><br>Compras pagadas en efectivo hoy: <strong>${money(todayCashPurchases)}</strong><br>Retiros personales cobrados al costo hoy: <strong>${money(todayPersonal)}</strong><br>Otros gastos de efectivo hoy: <strong>${money(todayCashExpenses)}</strong><br>Otras salidas de mercancía de hoy: <strong>${todayOtherExits}</strong> unidades`;
     }
     const activeSalesForCapital=(Array.isArray(sales)?sales:[]).filter(s=>!s.reverted);
     const totalSalesForCapital=activeSalesForCapital.reduce((sum,s)=>sum+Number(s.total||0),0);
