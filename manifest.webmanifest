@@ -1,15 +1,13 @@
 {
-  "name": "Tienda Italy Mau.dim",
+  "name": "Italy Mau.dim Tienda",
   "short_name": "Italy Mau.dim",
-  "description": "Administrador de tienda e inventario con funcionamiento offline.",
-  "lang": "es",
-  "dir": "ltr",
-  "start_url": "./index.html",
+  "description": "Sistema de ventas, inventario y caja de Italy Mau.dim.",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f4f4f4",
-  "theme_color": "#111111",
+  "background_color": "#080808",
+  "theme_color": "#d8a83e",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "./icons/icon-192.png",
@@ -25,4 +23,3 @@
     }
   ]
 }
-
