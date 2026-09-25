@@ -477,6 +477,54 @@ main{max-width:1120px}
   #screen-sale .products-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 
+
+/* ===== INDICADOR OFFLINE — INTEGRADO SIN ALTERAR LA COMPOSICIÓN ===== */
+.offline-status{
+  position:fixed!important;
+  left:50%!important;
+  top:96px!important;
+  transform:translateX(-50%);
+  z-index:45;
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+  width:max-content;
+  max-width:calc(100vw - 32px);
+  min-height:22px;
+  padding:4px 9px!important;
+  border-radius:999px!important;
+  background:rgba(9,9,9,.86)!important;
+  color:#c9bd9e!important;
+  border:1px solid rgba(233,184,75,.38)!important;
+  box-shadow:0 4px 14px rgba(0,0,0,.55),inset 0 1px rgba(255,255,255,.05)!important;
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  font-size:9px!important;
+  line-height:1!important;
+  font-weight:700!important;
+  letter-spacing:.55px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.offline-status.offline{
+  background:rgba(18,12,12,.9)!important;
+  color:#ffb4b7!important;
+  border-color:rgba(255,105,115,.42)!important;
+}
+.offline-status.pending{
+  background:rgba(24,17,7,.9)!important;
+  color:#ffd978!important;
+  border-color:rgba(233,184,75,.48)!important;
+}
+.offline-status::first-letter{font-size:10px}
+@media(max-width:599px){
+  .offline-status{top:92px!important;min-height:21px;padding:4px 8px!important;font-size:8.5px!important;letter-spacing:.45px}
+}
+@media(min-width:600px){
+  .offline-status{top:100px!important}
+}
+
 </style>
 </head>
 <body>
