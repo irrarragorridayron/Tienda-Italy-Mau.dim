@@ -2770,5 +2770,49 @@ document.addEventListener("click",e=>{
 });
 renderHomeDashboard();
 </script>
+<script>
+/* ===== CAJA FINAL — CAPITAL ACTUAL MENOS INVENTARIO AL COSTO ===== */
+(function(){
+  function currentCapitalForCash(){
+    const profit=typeof getAccumulatedProfit==='function' ? Number(getAccumulatedProfit()||0) : 0;
+    const injections=Array.isArray(window.capitalInjections)
+      ? capitalInjections.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
+    const withdrawals=Array.isArray(window.capitalWithdrawals)
+      ? capitalWithdrawals.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
+    const deterioration=Array.isArray(window.deteriorationExits)
+      ? deteriorationExits.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
+    return Number(window.capitalInitial||0)+profit+injections-withdrawals-deterioration;
+  }
+
+  function inventoryCostForCash(){
+    return (Array.isArray(window.products)?products:[]).reduce((sum,p)=>{
+      const stock=Math.max(0,Number(p.stock)||0);
+      const cost=Math.max(0,Number(p.cost)||0);
+      return sum+(stock*cost);
+    },0);
+  }
+
+  window.getCashInBox=function(){
+    const currentCapital=currentCapitalForCash();
+    const inventoryCost=inventoryCostForCash();
+    // Regla única de caja:
+    // Efectivo en caja = Capital actual - valor de la mercancía al costo.
+    // No se modifica aquí la fórmula del capital actual.
+    return Math.max(0,currentCapital-inventoryCost);
+  };
+
+  // Actualizar inmediatamente las tarjetas que muestran efectivo.
+  function refreshCashOnly(){
+    const cash=window.getCashInBox();
+    const cashEl=document.getElementById('cashInBoxTotal');
+    if(cashEl)cashEl.textContent=money(cash);
+    const homeCash=document.getElementById('homeCash');
+    if(homeCash)homeCash.textContent=money(cash);
+  }
+  document.addEventListener('DOMContentLoaded',refreshCashOnly);
+  window.addEventListener('load',refreshCashOnly);
+})();
+</script>
+
 </body>
 </html>
