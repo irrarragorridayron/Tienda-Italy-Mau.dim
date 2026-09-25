@@ -383,6 +383,100 @@ main{max-width:1120px}
   #screen-sale .product-card{min-height:132px}
   #screen-sales .stat-value{font-size:20px}
 }
+
+/* ===== ITALY MAU.DIM — NUEVA VENTA V5: TARJETAS DE PRODUCTO ===== */
+#screen-sale .products-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+#screen-sale .product-card{
+  position:relative;
+  min-height:190px;
+  padding:10px 10px 12px;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  align-items:center;
+  text-align:center;
+  overflow:hidden;
+  border-radius:20px;
+  border:1px solid rgba(233,184,75,.26);
+  background:
+    radial-gradient(circle at 50% 8%,rgba(240,42,155,.08),transparent 38%),
+    linear-gradient(145deg,#202020,#101010 72%);
+  box-shadow:0 9px 22px #0008,inset 0 1px #ffffff0a;
+  transition:transform .14s,border-color .14s,box-shadow .14s;
+}
+#screen-sale .product-card:before{
+  content:'';
+  position:absolute;left:12px;right:12px;top:0;height:2px;border-radius:0 0 4px 4px;
+  background:linear-gradient(90deg,transparent,var(--im-gold),var(--im-pink),transparent);
+  opacity:.7;
+}
+#screen-sale .product-card:active{
+  transform:scale(.975);
+  border-color:var(--im-gold);
+  box-shadow:0 5px 15px #000,inset 0 1px #fff1;
+}
+#screen-sale .product-card[style*="opacity"]{filter:saturate(.55)}
+#screen-sale .product-icon{
+  width:94px;height:94px;
+  margin:4px auto 7px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:48px;line-height:1;
+  border-radius:17px;
+  background:linear-gradient(145deg,#29241b,#111);
+  border:1px solid rgba(233,184,75,.22);
+  box-shadow:inset 0 1px #fff0a,0 5px 13px #0007;
+  filter:drop-shadow(0 0 7px #e9b84b25);
+  overflow:hidden;
+}
+#screen-sale .product-name{
+  width:100%;
+  min-height:38px;
+  display:flex;align-items:center;justify-content:center;
+  color:#f8edcf;
+  font-size:14px;font-weight:800;line-height:1.25;
+  letter-spacing:.15px;
+}
+#screen-sale .product-price{
+  margin-top:5px;
+  color:var(--im-gold2);
+  font-size:18px;font-weight:900;
+  text-shadow:0 0 10px #e9b84b22;
+}
+#screen-sale .stock{
+  margin-top:5px;
+  padding:4px 8px;
+  border-radius:999px;
+  color:#a9a198;
+  background:#ffffff07;
+  border:1px solid #ffffff0a;
+  font-size:10px;font-weight:700;
+}
+#screen-sale .stock.low{
+  color:#ffb0b4;
+  background:#ff3b4b0e;
+  border-color:#ff6e7530;
+}
+#screen-sale .product-card[style*="opacity"] .stock{
+  color:#ff8d94;
+}
+@media(max-width:599px){
+  #screen-sale .product-card{min-height:184px;padding:9px 8px 11px}
+  #screen-sale .product-icon{width:82px;height:82px;font-size:42px}
+  #screen-sale .product-name{font-size:13px;min-height:34px}
+  #screen-sale .product-price{font-size:17px}
+}
+@media(min-width:600px){
+  #screen-sale .products-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  #screen-sale .product-card{min-height:205px}
+  #screen-sale .product-icon{width:104px;height:104px;font-size:52px}
+}
+@media(min-width:1000px){
+  #screen-sale .products-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+
 </style>
 </head>
 <body>
