@@ -238,6 +238,151 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
   .home-stats{grid-template-columns:repeat(4,1fr)}
 }
 
+
+/* ===== V2 — ACABADO PREMIUM ITALY MAU.DIM ===== */
+:root{
+  --im-gold:#e9b84b;--im-gold2:#ffd978;--im-pink:#f02a9b;--im-purple:#8b35ff;
+  --im-bg:#050505;--im-panel:#101010;--im-panel2:#171717;--im-line:#e9b84b35;
+}
+body{background:
+  radial-gradient(circle at 8% 0%,rgba(233,184,75,.09),transparent 22%),
+  radial-gradient(circle at 100% 45%,rgba(240,42,155,.055),transparent 25%),
+  #050505;color:#f5f1e8;}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:linear-gradient(125deg,transparent 0 47%,rgba(233,184,75,.025) 48%,transparent 49% 100%)}
+.brand-header{position:sticky;top:0;overflow:hidden;border-bottom:1px solid #e9b84b55!important;box-shadow:0 10px 35px #000d!important}
+.brand-header:before,.brand-header:after{content:"";position:absolute;pointer-events:none;height:2px;border-radius:50%;filter:blur(.2px)}
+.brand-header:before{left:-10%;right:48%;bottom:7px;background:linear-gradient(90deg,transparent,var(--im-gold),var(--im-pink),transparent);transform:rotate(-2deg)}
+.brand-header:after{left:52%;right:-10%;bottom:7px;background:linear-gradient(90deg,transparent,var(--im-pink),var(--im-gold),transparent);transform:rotate(2deg)}
+main{max-width:900px}
+.home-hero{position:relative;overflow:hidden;border-color:#e9b84b55;box-shadow:0 18px 50px #000b,inset 0 1px #fff2,inset 0 -1px #f02a9b12}
+.home-hero:before{content:"";position:absolute;width:180px;height:180px;border-radius:50%;right:-80px;top:-80px;background:radial-gradient(circle,rgba(240,42,155,.18),transparent 65%);pointer-events:none}
+.home-hero:after{content:"";position:absolute;left:-70px;bottom:-100px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(233,184,75,.12),transparent 68%);pointer-events:none}
+.home-logo{position:relative;z-index:1}
+.home-stats{position:relative;z-index:1}
+.home-stat{position:relative;overflow:hidden;border-color:#e9b84b2c;box-shadow:inset 0 1px #fff1,0 8px 20px #0007}
+.home-stat:after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;background:linear-gradient(90deg,var(--im-gold),var(--im-pink));opacity:.55}
+.dashboard-card,.more-item{position:relative;overflow:hidden}
+.dashboard-card:before,.more-item:before{content:"";position:absolute;inset:1px;border-radius:inherit;background:linear-gradient(120deg,rgba(255,255,255,.06),transparent 25%,transparent 70%,rgba(240,42,155,.035));pointer-events:none}
+.dashboard-card:after,.more-item:after{content:"";position:absolute;left:-70%;top:-40%;width:45%;height:180%;transform:rotate(25deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);transition:left .5s}
+.dashboard-card:active:after,.more-item:active:after{left:125%}
+.dashboard-card img,.more-item img{position:relative;z-index:1}
+.dashboard-card strong,.dashboard-card small,.more-item strong{position:relative;z-index:1}
+.dashboard-card strong{font-size:15px;letter-spacing:.2px}
+.dashboard-card small{font-size:10px}
+.dashboard-section-title{font-size:17px;letter-spacing:.5px}
+.dashboard-grid{gap:13px}
+.primary{min-height:48px}
+button.secondary,button.danger{min-height:44px}
+.nav-btn{position:relative}
+.nav-btn.active:after{content:"";position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:5px;background:linear-gradient(90deg,var(--im-gold),var(--im-pink));box-shadow:0 0 8px #e9b84b88}
+.section-title{letter-spacing:.2px}
+.section-title:after{height:3px;width:65px}
+.card,.product-card,.inventory-item,.sale-item,.product-admin-item,.stat,.capital-card,.ipv-history-item{box-shadow:0 12px 30px #0009,inset 0 1px #fff1}
+.product-card:hover,.dashboard-card:hover,.more-item:hover{border-color:#e9b84b70}
+@media(max-width:599px){
+  main{padding-top:12px;padding-bottom:88px}
+  .home-hero{padding:14px 11px 16px;border-radius:22px}
+  .home-title{font-size:21px}
+  .dashboard-grid{gap:10px}
+  .dashboard-card{min-height:126px;border-radius:19px;padding:11px 8px}
+  .dashboard-card img{width:74px;height:66px}
+  .dashboard-card strong{font-size:13px}
+  .dashboard-card small{font-size:9px}
+  .home-stats{gap:8px}
+  .home-stat{padding:10px}
+  .home-stat .value{font-size:17px}
+}
+
+
+
+/* ===== V3 — DASHBOARD OFICIAL ITALY MAU.DIM ===== */
+main{max-width:1120px}
+.home-hero{padding:18px 16px 20px;border-radius:26px}
+.home-logo{max-height:170px}
+.dashboard-section-title{margin:22px 2px 12px;font-size:18px;text-transform:uppercase;letter-spacing:1px}
+.dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.dashboard-card{min-height:148px;border-radius:22px;padding:13px 9px 12px}
+.dashboard-card img{width:92px;height:82px}
+.dashboard-card strong{font-size:14px;text-transform:uppercase;letter-spacing:.45px}
+.dashboard-card small{font-size:10px;color:#aaa096}
+.dashboard-card.gold-accent{border-color:#e9b84b66;background:linear-gradient(145deg,#211b10,#0d0d0d)}
+.dashboard-card.pink-accent{border-color:#f02a9b55;background:linear-gradient(145deg,#21111d,#0d0d0d)}
+.dashboard-card.purple-accent{border-color:#8b35ff55;background:linear-gradient(145deg,#171021,#0d0d0d)}
+.home-stats{gap:9px}
+.home-stat{border-radius:17px}
+.dashboard-footer-note{margin:14px 2px 2px;text-align:center;color:#777066;font-size:10px}
+@media(min-width:700px){
+  .dashboard-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+  .dashboard-card{min-height:156px}
+}
+@media(min-width:1100px){
+  .dashboard-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:15px}
+  .dashboard-card{min-height:165px}
+  .dashboard-card img{width:100px;height:88px}
+}
+@media(max-width:599px){
+  .home-logo{max-height:118px}
+  .dashboard-card{min-height:136px;padding:10px 7px}
+  .dashboard-card img{width:76px;height:68px}
+  .dashboard-card strong{font-size:12px}
+}
+
+
+/* ===== ITALY MAU.DIM — PANTALLAS INTERNAS V4 ===== */
+.screen:not(#screen-home){position:relative}
+.screen:not(#screen-home)::before{content:'ITALY MAU.DIM';display:inline-block;font-size:9px;letter-spacing:2px;color:#a99670;margin:0 0 5px;font-weight:700}
+.screen:not(#screen-home) .section-title{font-size:24px;line-height:1.15;margin-bottom:5px}
+.screen:not(#screen-home) .subtitle{color:#8f8980}
+
+/* Nueva venta */
+#screen-sale .products-grid{gap:11px}
+#screen-sale .product-card{min-height:145px;display:flex;flex-direction:column;justify-content:center}
+#screen-sale .card{border-color:rgba(233,184,75,.28)}
+#screen-sale h3{color:#f4dca3;margin-top:2px}
+#screen-sale .quantity-controls button{background:#29251e;color:#ffd978;border:1px solid #e9b84b33}
+
+/* Inventario / IPV */
+#screen-inventory .ipv-total-card{padding:22px 15px}
+#screen-inventory .ipv-grand-total{font-size:32px}
+#screen-inventory .ipv-movement,#screen-inventory .ipv-day-tools{gap:9px}
+#screen-inventory .ipv-movement button,#screen-inventory .ipv-day-tools button{border-radius:13px}
+#screen-inventory .inventory-item{border-radius:17px}
+#screen-inventory .inventory-stock{color:#ffd978}
+
+/* Ventas y reportes */
+#screen-sales .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#screen-sales .stat{min-height:94px;display:flex;flex-direction:column;justify-content:center}
+#screen-sales .sale-item{border-radius:17px;border-left:3px solid #e9b84b66}
+#screen-sales .sale-title{color:#f5dfa5}
+
+/* Productos */
+#screen-products #adminAddProductBtn{font-size:16px;padding:14px}
+#screen-products .product-admin-item{border-radius:17px}
+#screen-products .admin-name{color:#f5dfa5}
+#screen-products .admin-actions button{border-radius:12px}
+
+/* Capital */
+#screen-products .capital-grid{margin-top:12px}
+#screen-products .capital-card{min-height:95px}
+
+/* Formularios y modales internos */
+.modal-content h2{color:#f5dfa5}
+.modal-content h3{color:#f1d078}
+.modal-content .primary{min-height:48px}
+
+/* Mejor jerarquía de botones */
+.screen button{transition:transform .12s,box-shadow .12s,border-color .12s}
+.screen button:active{transform:scale(.98)}
+
+@media(min-width:700px){
+  #screen-sale .products-grid{grid-template-columns:repeat(3,1fr)}
+  #screen-sales .stats-grid{grid-template-columns:repeat(4,1fr)}
+}
+@media(max-width:599px){
+  .screen:not(#screen-home)::before{margin-top:1px}
+  #screen-sale .product-card{min-height:132px}
+  #screen-sales .stat-value{font-size:20px}
+}
 </style>
 </head>
 <body>
@@ -253,7 +398,7 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
   <div class="home-hero">
     <img class="home-logo" src="./assets/logo-horizontal.png" alt="Italy Mau.dim Tienda">
     <div class="home-kicker">PANEL PRINCIPAL · ADMINISTRADOR</div>
-    <h2 class="home-title">Tu tienda, en un solo lugar</h2>
+    <h2 class="home-title">Todo lo que necesitas, en un solo lugar</h2>
     <p class="home-subtitle">Ventas · Inventario · Capital · Caja · Trabajo offline</p>
     <div class="home-stats">
       <div class="home-stat"><div class="label">Ventas hoy</div><div id="homeSalesCount" class="value">0</div></div>
@@ -265,62 +410,75 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 
   <h3 class="dashboard-section-title">Módulos principales</h3>
   <div class="dashboard-grid">
-    <button class="dashboard-card" onclick="showScreen('products')">
+    <button class="dashboard-card gold-accent" onclick="showScreen('products')">
       <img src="./assets/icon-productos.png" alt="">
       <strong>Productos</strong><small>Catálogo y administración</small>
     </button>
-    <button class="dashboard-card" onclick="showScreen('sales')">
+    <button class="dashboard-card pink-accent" onclick="showScreen('sale')">
       <img src="./assets/icon-ventas.png" alt="">
-      <strong>Ventas</strong><small>Historial y ganancias</small>
+      <strong>Ventas</strong><small>Nueva venta y cobro</small>
     </button>
-    <button class="dashboard-card" onclick="showScreen('inventory')">
+    <button class="dashboard-card gold-accent" onclick="showScreen('inventory')">
       <img src="./assets/icon-inventario.png" alt="">
-      <strong>Inventario</strong><small>IPV y existencias</small>
+      <strong>Inventario</strong><small>Existencias e IPV</small>
     </button>
-    <button class="dashboard-card" onclick="openProductModal()">
+    <button class="dashboard-card purple-accent" onclick="showScreen('sales')">
+      <img src="./assets/icon-reportes.png" alt="">
+      <strong>Reportes</strong><small>Ventas y ganancias</small>
+    </button>
+    <button class="dashboard-card gold-accent" onclick="closeMoreMenu();showScreen('sales');setTimeout(()=>document.getElementById('capitalInitialInput')?.scrollIntoView({behavior:'smooth',block:'center'}),150)">
+      <img src="./assets/icon-caja.png" alt="">
+      <strong>Caja</strong><small>Capital y efectivo</small>
+    </button>
+  </div>
+
+  <h3 class="dashboard-section-title">Herramientas de la tienda</h3>
+  <div class="dashboard-grid">
+    <button class="dashboard-card pink-accent" onclick="openProductModal()">
       <img src="./assets/icon-agregar.png" alt="">
       <strong>Agregar producto</strong><small>Alta rápida</small>
     </button>
-  </div>
-
-  <h3 class="dashboard-section-title">Acciones rápidas</h3>
-  <div class="dashboard-grid">
-    <button class="dashboard-card" onclick="showScreen('sale')">
-      <img src="./assets/icon-ventas.png" alt="">
-      <strong>Nueva venta</strong><small>Abrir punto de venta</small>
+    <button class="dashboard-card purple-accent" onclick="closeMoreMenu();showScreen('products');setTimeout(()=>document.getElementById('importCloudBtn')?.click(),250)">
+      <img src="./assets/icon-nube.png" alt="">
+      <strong>Importar a la nube</strong><small>Sincronización</small>
     </button>
-    <button class="dashboard-card" onclick="showScreen('inventory')">
-      <img src="./assets/icon-inventario.png" alt="">
-      <strong>IPV</strong><small>Control diario</small>
-    </button>
-    <button class="dashboard-card" onclick="showMoreMenu()">
+    <button class="dashboard-card gold-accent" onclick="closeMoreMenu();showScreen('products');setTimeout(()=>document.getElementById('adminToolsCard')?.scrollIntoView({behavior:'smooth',block:'center'}),150)">
       <img src="./assets/icon-configuracion.png" alt="">
-      <strong>Más opciones</strong><small>Caja y herramientas</small>
+      <strong>Configuración</strong><small>Administración</small>
     </button>
-    <button class="dashboard-card" onclick="document.getElementById('offlineStatus').scrollIntoView({behavior:'smooth',block:'center'})">
+    <button class="dashboard-card purple-accent" onclick="closeMoreMenu();alert('La versión actual está configurada para administrador único. El módulo de usuarios queda reservado para la futura versión multiusuario.')">
+      <img src="./assets/icon-usuarios.png" alt="">
+      <strong>Usuarios</strong><small>Próximamente multiusuario</small>
+    </button>
+    <button class="dashboard-card gold-accent" onclick="showScreen('inventory');setTimeout(()=>document.getElementById('dailyIPVContainer')?.scrollIntoView({behavior:'smooth',block:'center'}),150)">
+      <img src="./assets/icon-historial.png" alt="">
+      <strong>Historial</strong><small>IPV diario</small>
+    </button>
+    <button class="dashboard-card pink-accent" onclick="closeMoreMenu();alert('La aplicación está preparada para trabajar sin Internet. Los datos se guardan en este teléfono.')">
       <img src="./assets/icon-ayuda.png" alt="">
-      <strong>Estado offline</strong><small>Datos guardados en este teléfono</small>
+      <strong>Ayuda</strong><small>Modo offline</small>
     </button>
   </div>
+  <div class="dashboard-footer-note">Italy Mau.dim · TIENDA · Todo lo que necesitas, en un solo lugar</div>
 </section>
 
 <section id="screen-sale" class="screen active">
-<h2 class="section-title">🛒 Nueva venta</h2>
+<h2 class="section-title">Nueva venta</h2>
 <p class="subtitle">Toca un producto para añadirlo al carrito.</p>
 <div id="saleProducts" class="products-grid"></div>
 <div class="card">
-<h3>🛒 Carrito</h3>
+<h3>Carrito de compra</h3>
 <div id="cartContainer"><div class="empty">El carrito está vacío.</div></div>
 <div id="totalBox" class="total-box" style="display:none">
 <div class="total-row"><span>Productos</span><span id="cartUnits">0</span></div>
 <div class="total-row total-final"><span>TOTAL</span><span id="cartTotal">$0.00</span></div>
-<button class="primary" onclick="openPaymentModal()">💵 COBRAR</button>
+<button class="primary" onclick="openPaymentModal()">COBRAR</button>
 </div>
 </div>
 </section>
 
 <section id="screen-inventory" class="screen">
-<h2 class="section-title">📦 IPV — Inventario a Precio de Venta</h2>
+<h2 class="section-title">IPV — Inventario a Precio de Venta</h2>
 <p class="subtitle">Control del inventario valorizado al precio de venta.</p>
 <div class="card ipv-total-card">
   <div class="ipv-total-label">VALOR TOTAL DEL INVENTARIO A PRECIO DE VENTA</div>
@@ -331,23 +489,23 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
   <div id="inventoryContainer"></div>
 </div>
 <div class="card">
-  <h3 style="margin-top:0">📅 IPV por día</h3>
+  <h3 style="margin-top:0">IPV por día</h3>
   <label>Selecciona la fecha</label>
   <input id="ipvReportDate" class="ipv-date-input" type="date">
   <div class="ipv-day-tools">
-    <button class="primary" style="margin-top:0" onclick="generateDailyIPV()">📋 Generar IPV del día</button>
-    <button class="secondary" style="padding:15px" onclick="showTodayIPV()">📅 Ver hoy</button>
+    <button class="primary" style="margin-top:0" onclick="generateDailyIPV()">Generar IPV del día</button>
+    <button class="secondary" style="padding:15px" onclick="showTodayIPV()">Ver hoy</button>
   </div>
   <div id="dailyIPVContainer" style="margin-top:14px"></div>
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
-  <button class="primary" style="margin-top:0" onclick="openIPVMovementModal('entry')">➕ Registrar entrada</button>
-  <button class="secondary" style="padding:15px" onclick="openIPVMovementModal('exit')">➖ Registrar otra salida</button>
+  <button class="primary" style="margin-top:0" onclick="openIPVMovementModal('entry')">Registrar entrada</button>
+  <button class="secondary" style="padding:15px" onclick="openIPVMovementModal('exit')">Registrar otra salida</button>
 </div>
 </section>
 
 <section id="screen-sales" class="screen">
-<h2 class="section-title">📊 Ventas</h2>
+<h2 class="section-title">Ventas y reportes</h2>
 <p class="subtitle">Resumen e historial de ventas.</p>
 <div class="stats-grid">
 <div class="stat"><div class="stat-label">VENTAS DE HOY</div><div id="todaySalesCount" class="stat-value">0</div></div>
@@ -357,7 +515,7 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 <div class="stat"><div class="stat-label">OTRAS SALIDAS HOY</div><div id="todayOtherExitsTotal" class="stat-value">0</div></div>
 </div>
 <div class="card">
-<h3 style="margin-top:0">💰 Capital y ganancias</h3>
+<h3 style="margin-top:0">Capital y ganancias</h3>
 <div class="capital-grid">
 <div class="capital-card"><div class="capital-label">Capital inicial</div><div id="capitalInitialDisplay" class="capital-value">$0.00</div></div>
 <div class="capital-card"><div class="capital-label">Ganancia acumulada</div><div id="capitalProfitDisplay" class="capital-value capital-profit">$0.00</div></div>
@@ -365,16 +523,16 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 </div>
 <div class="hint">La <strong>ganancia</strong> se calcula como precio de venta menos costo. El <strong>capital actual</strong> se calcula como: capital inicial + ganancia acumulada + inyecciones de capital − retiros de capital − salidas del negocio por deterioro o mal estado. El efectivo en caja, la ganancia y el inventario se controlan por separado.</div>
 <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-<button class="secondary" style="width:100%" onclick="registerCapitalInjection()">➕ Inyectar capital</button>
-<button class="secondary" style="width:100%" onclick="registerCapitalWithdrawal()">➖ Retirar capital</button>
+<button class="secondary" style="width:100%" onclick="registerCapitalInjection()">Inyectar capital</button>
+<button class="secondary" style="width:100%" onclick="registerCapitalWithdrawal()">Retirar capital</button>
 </div>
 <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-<button class="secondary" style="width:100%" onclick="registerDeteriorationExit()">🗑️ Deterioro / mal estado</button>
-<button class="secondary" style="width:100%" onclick="registerCashExpense()">💸 Salida de efectivo</button>
+<button class="secondary" style="width:100%" onclick="registerDeteriorationExit()">Deterioro / mal estado</button>
+<button class="secondary" style="width:100%" onclick="registerCashExpense()">Salida de efectivo</button>
 </div>
 <div class="capital-setting">
 <div><label>Establecer capital inicial</label><input id="capitalInitialInput" type="number" min="0" step="0.01" placeholder="0.00"></div>
-<button class="primary" onclick="saveInitialCapital()">💾 Guardar capital</button>
+<button class="primary" onclick="saveInitialCapital()">Guardar capital</button>
 </div>
 <div id="capitalTodayProfit" class="hint" style="margin-top:12px;margin-bottom:0"></div>
 </div>
@@ -382,19 +540,19 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 </section>
 
 <section id="screen-products" class="screen">
-<h2 class="section-title">⚙️ Productos</h2>
+<h2 class="section-title">Productos</h2>
 <p class="subtitle">Administra los productos de tu tienda.</p>
-<button id="adminAddProductBtn" class="primary" onclick="openProductModal()">➕ Agregar producto</button>
+<button id="adminAddProductBtn" class="primary" onclick="openProductModal()">Agregar producto</button>
 
 <div id="adminToolsCard" class="card" style="margin-top:14px;display:none">
-  <h3 style="margin-top:0">🔐 Puesta a cero inicial</h3>
+  <h3 style="margin-top:0">Puesta a cero inicial</h3>
   <div class="hint">Úsala <strong>una sola vez</strong>, antes de comenzar a trabajar. Borra las ventas, movimientos, capital e historial IPV compartidos y deja los productos preparados para comenzar desde cero. Después de realizarla, no se ejecutará ningún reinicio automático.</div>
-  <button class="danger" style="width:100%;padding:14px" onclick="initialStoreSetupAdmin()">🧹 Hacer puesta a cero inicial</button>
+  <button class="danger" style="width:100%;padding:14px" onclick="initialStoreSetupAdmin()">Hacer puesta a cero inicial</button>
 </div>
 <div id="initialDeviceCard" class="card" style="margin-top:14px">
-  <h3 style="margin-top:0">🚀 Inicio de la tienda</h3>
+  <h3 style="margin-top:0">Inicio de la tienda</h3>
   <div class="hint">Después de que el administrador haga la puesta a cero inicial, pulsa este botón en <strong>cada teléfono</strong> para eliminar cualquier venta o cola offline antigua de ese dispositivo.</div>
-  <button class="secondary" style="width:100%;padding:14px" onclick="prepareInitialDevice()">📱 Preparar este teléfono para comenzar</button>
+  <button class="secondary" style="width:100%;padding:14px" onclick="prepareInitialDevice()">Preparar este teléfono para comenzar</button>
 </div>
 
 <br>
@@ -404,7 +562,7 @@ label{color:#eee}.hint{background:linear-gradient(145deg,#181818,#101010);border
 
 <nav class="bottom-nav">
 <button class="nav-btn active" onclick="showScreen('home',this)"><img class="nav-icon-img" src="./assets/icon-inicio.png" alt="">Inicio</button>
-<button class="nav-btn" onclick="showScreen('sale',this)"><img class="nav-icon-img" src="./assets/icon-ventas.png" alt="">Vender</button>
+<button class="nav-btn" onclick="showScreen('sale',this)"><img class="nav-icon-img" src="./assets/icon-ventas.png" alt="">Ventas</button>
 <button class="nav-btn" onclick="showScreen('inventory',this)"><img class="nav-icon-img" src="./assets/icon-inventario.png" alt="">Inventario</button>
 <button class="nav-btn" onclick="showMoreMenu()"><img class="nav-icon-img" src="./assets/icon-configuracion.png" alt="">Más</button>
 </nav>
