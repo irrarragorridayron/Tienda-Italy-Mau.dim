@@ -653,6 +653,28 @@ main{max-width:1120px}
 }
 
 </style>
+
+<style>
+/* ===== MULTIUSUARIO SIN CONTRASEÑA — V8 ===== */
+#imRoleOverlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(3,3,3,.96);backdrop-filter:blur(8px)}
+#imRoleOverlay .im-role-box{width:min(440px,100%);background:linear-gradient(145deg,#1b1711,#0b0b0b);border:1px solid #e9b84b55;border-radius:24px;padding:24px;box-shadow:0 20px 60px #000c;text-align:center}
+#imRoleOverlay img{max-width:260px;width:72%;height:auto;margin:0 auto 12px;display:block}
+#imRoleOverlay h2{margin:5px 0 7px;color:#f5d889;font-size:23px}
+#imRoleOverlay p{color:#aaa39a;font-size:13px;line-height:1.5;margin:0 0 18px}
+.im-role-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.im-role-btn{min-height:120px;border-radius:18px;background:linear-gradient(145deg,#242018,#101010);border:1px solid #e9b84b44;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-size:16px;font-weight:900;cursor:pointer}
+.im-role-btn span{font-size:34px}.im-role-btn small{color:#aaa39a;font-size:11px;font-weight:600}.im-role-btn:active{transform:scale(.98);border-color:#ffd978}
+#imSellerPanel{display:none;margin:0 0 15px}.im-seller-panel{background:linear-gradient(145deg,#21151e,#100d12);border:1px solid #f02a9b55;border-radius:18px;padding:14px;box-shadow:0 10px 26px #0007}.im-seller-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.im-seller-head strong{color:#ffd978}.im-seller-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:11px}.im-seller-stat{background:#ffffff07;border:1px solid #ffffff0b;border-radius:13px;padding:11px}.im-seller-stat span{display:block;color:#aaa39a;font-size:10px}.im-seller-stat strong{display:block;color:#fff;font-size:19px;margin-top:3px}.im-seller-products{margin-top:11px;max-height:210px;overflow:auto}.im-seller-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #ffffff0b;font-size:12px}.im-seller-row:last-child{border-bottom:0}.im-user-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:#ffffff08;border:1px solid #e9b84b33;color:#f6dda0;font-size:11px;font-weight:800;margin-top:6px}.im-sync-mini{font-size:10px;color:#aaa39a;margin-top:7px}.im-sync-mini.ok{color:#72e6a2}.im-sync-mini.wait{color:#ffd978}
+#imAdminSyncCard{display:none;margin-top:10px}.im-admin-sync{background:linear-gradient(145deg,#171717,#0d0d0d);border:1px solid #8b45e855;border-radius:17px;padding:13px}.im-admin-sync strong{color:#d7b6ff}.im-admin-sync .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.im-admin-sync button{flex:1;min-width:145px}
+body.im-seller-mode .dashboard-section-title,body.im-seller-mode #screen-home,body.im-seller-mode #screen-inventory,body.im-seller-mode #screen-sales,body.im-seller-mode #screen-products,body.im-seller-mode .bottom-nav{display:none!important}
+body.im-seller-mode main{padding-bottom:24px;max-width:760px}
+body.im-seller-mode #screen-sale{display:block!important;min-height:calc(100vh - 110px)}
+body.im-seller-mode #screen-sale .section-title{font-size:26px;color:#f5d889}
+body.im-seller-mode #screen-sale .subtitle{font-size:12px}
+body.im-seller-mode #screen-sale .product-card{min-height:205px}
+body.im-seller-mode #screen-sale .card{margin-top:14px}
+@media(max-width:520px){.im-role-grid{grid-template-columns:1fr}.im-seller-summary{grid-template-columns:1fr 1fr}}
+</style>
 </head>
 <body>
 <div id="offlineStatus" class="offline-status" style="display:none">☁️ Conectado</div>
@@ -2813,5 +2835,196 @@ renderHomeDashboard();
 })();
 </script>
 
+
+<script>
+/* ================================================================
+   ITALY MAU.DIM — USUARIO ADMINISTRADOR / VENDEDOR SIN CONTRASEÑA
+   V8 sobre la versión 7.
+   - El administrador conserva su aplicación completa y offline.
+   - El vendedor solo ve Ventas y su resumen.
+   - Internet se usa exclusivamente para sincronizar catálogo/ventas.
+   - Los datos operativos siguen guardados localmente en cada teléfono.
+   ================================================================ */
+(function(){
+  const ROLE_KEY='italy_user_role_v8';
+  const DEVICE_KEY='italy_device_id_v8';
+  const SELLER_QUEUE_KEY='italy_seller_pending_sales_v8';
+  const SELLER_LAST_SYNC_KEY='italy_seller_last_sync_v8';
+  const SYNC_TABLE='italy_seller_sales_sync';
+  const PRODUCTS_TABLE='italy_seller_products_sync';
+  let currentRole=localStorage.getItem(ROLE_KEY)||'';
+  let deviceId=localStorage.getItem(DEVICE_KEY)||('dev-'+generateUUID());
+  localStorage.setItem(DEVICE_KEY,deviceId);
+  let sellerQueue=loadData(SELLER_QUEUE_KEY,[]); if(!Array.isArray(sellerQueue))sellerQueue=[];
+  let sellerSyncBusy=false,adminSyncBusy=false;
+
+  function saveQueue(){saveData(SELLER_QUEUE_KEY,sellerQueue)}
+  function isSeller(){return currentRole==='seller'}
+  function isAdminLocal(){return currentRole==='admin'}
+  function setRole(role){
+    currentRole=role;localStorage.setItem(ROLE_KEY,role);
+    document.body.classList.toggle('im-seller-mode',isSeller());
+    const overlay=document.getElementById('imRoleOverlay');if(overlay)overlay.remove();
+    if(isSeller())activateSellerUI(); else activateAdminUI();
+  }
+  function roleOverlay(){
+    if(document.getElementById('imRoleOverlay'))return;
+    const o=document.createElement('div');o.id='imRoleOverlay';
+    o.innerHTML='<div class="im-role-box"><img src="./assets/logo-horizontal.png" alt="Italy Mau.dim Tienda"><h2>Selecciona el usuario</h2><p>Sin contraseña. El teléfono conserva localmente el usuario elegido y trabaja sin Internet.</p><div class="im-role-grid"><button class="im-role-btn" id="imChooseAdmin"><span>👑</span>Administrador<small>Acceso completo</small></button><button class="im-role-btn" id="imChooseSeller"><span>🧑‍💼</span>Vendedor<small>Solo ventas y cobro</small></button></div></div>';
+    document.body.appendChild(o);
+    o.querySelector('#imChooseAdmin').onclick=()=>setRole('admin');
+    o.querySelector('#imChooseSeller').onclick=()=>setRole('seller');
+  }
+  function addUserChip(){
+    const header=document.querySelector('header');if(!header||document.getElementById('imUserChip'))return;
+    const chip=document.createElement('div');chip.id='imUserChip';chip.className='im-user-chip';
+    chip.innerHTML=(isSeller()?'🧑‍💼 Vendedor':'👑 Administrador')+' · <button type="button" style="background:none;border:0;color:#ffd978;padding:0;font-size:11px;font-weight:900" id="imSwitchUser">Cambiar</button>';
+    header.appendChild(chip);
+    document.getElementById('imSwitchUser').onclick=()=>{localStorage.removeItem(ROLE_KEY);location.reload()};
+  }
+  function activateAdminUI(){
+    document.body.classList.remove('im-seller-mode');
+    document.getElementById('screen-sale').classList.add('active');
+    addUserChip();
+    ensureAdminSyncCard();
+    renderAllLocal();
+    setTimeout(adminSyncAll,700);
+  }
+  function activateSellerUI(){
+    document.body.classList.add('im-seller-mode');
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById('screen-sale').classList.add('active');
+    const nav=document.querySelector('.bottom-nav');if(nav)nav.style.display='none';
+    addUserChip();
+    ensureSellerPanel();
+    renderSaleProducts();renderCart();renderSellerSummary();
+    setTimeout(async()=>{await sellerSyncCatalog();await sellerUploadQueue();renderSaleProducts();renderSellerSummary()},800);
+  }
+  function renderAllLocal(){
+    try{renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();updateOfflineStatus()}catch(e){}
+  }
+  function ensureSellerPanel(){
+    let p=document.getElementById('imSellerPanel');if(p)return;
+    p=document.createElement('div');p.id='imSellerPanel';
+    p.innerHTML='<div class="im-seller-panel"><div class="im-seller-head"><strong>Resumen de ventas</strong><span id="imSellerSyncMini" class="im-sync-mini">Sincronización pendiente</span></div><div class="im-seller-summary"><div class="im-seller-stat"><span>Ventas de hoy</span><strong id="imSellerCount">0</strong></div><div class="im-seller-stat"><span>Total vendido</span><strong id="imSellerTotal">$0.00</strong></div><div class="im-seller-stat"><span>Efectivo cobrado</span><strong id="imSellerCash">$0.00</strong></div><div class="im-seller-stat"><span>Total a entregar</span><strong id="imSellerDeposit">$0.00</strong></div></div><div id="imSellerProducts" class="im-seller-products"></div></div>';
+    const sale=document.getElementById('screen-sale');sale.insertBefore(p,sale.firstElementChild?.nextSibling||sale.firstChild);p.style.display='block';
+  }
+  function ensureAdminSyncCard(){
+    let c=document.getElementById('imAdminSyncCard');if(c)return;
+    const home=document.getElementById('screen-home');if(!home)return;
+    c=document.createElement('div');c.id='imAdminSyncCard';
+    c.innerHTML='<div class="im-admin-sync"><strong>Usuarios y sincronización</strong><div id="imAdminSyncStatus" class="im-sync-mini">Preparando sincronización…</div><div class="row"><button class="secondary" onclick="window.italySyncSellerNow()">☁️ Sincronizar vendedor</button><button class="secondary" onclick="localStorage.removeItem(\"italy_user_role_v8\");location.reload()">👤 Cambiar usuario</button></div></div>';
+    home.appendChild(c);c.style.display='block';
+  }
+  function todayKey(){return localDateKey()}
+  function sellerTodaySales(){return (Array.isArray(sales)?sales:[]).filter(s=>s.sellerDeviceId===deviceId&&!s.reverted&&localDateKey(s.date)===todayKey())}
+  function renderSellerSummary(){
+    if(!isSeller())return;ensureSellerPanel();
+    const list=sellerTodaySales();
+    const total=list.reduce((a,s)=>a+Number(s.total||0),0);
+    const cash=list.filter(s=>String(s.payment||'').toLowerCase()==='efectivo').reduce((a,s)=>a+Number(s.total||0),0);
+    document.getElementById('imSellerCount').textContent=list.length;
+    document.getElementById('imSellerTotal').textContent=money(total);
+    document.getElementById('imSellerCash').textContent=money(cash);
+    document.getElementById('imSellerDeposit').textContent=money(total);
+    const map={};list.forEach(s=>(s.items||[]).forEach(i=>{if(!map[i.name])map[i.name]={q:0,total:0};map[i.name].q+=Number(i.quantity)||0;map[i.name].total+=Number(i.subtotal||0)}));
+    const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total).map(([name,v])=>'<div class="im-seller-row"><span>'+esc(name)+' × '+v.q+'</span><strong>'+money(v.total)+'</strong></div>').join('');
+    document.getElementById('imSellerProducts').innerHTML=rows||'<div class="im-sync-mini">Todavía no hay ventas de hoy.</div>';
+    const st=document.getElementById('imSellerSyncMini');
+    st.textContent=sellerQueue.length?(sellerQueue.length+' venta(s) pendiente(s) de sincronizar'):'✓ Ventas guardadas en este teléfono';
+    st.className='im-sync-mini '+(sellerQueue.length?'wait':'ok');
+  }
+  function restHeaders(){return {'apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+SUPABASE_ANON_KEY,'Content-Type':'application/json'}}
+  async function rest(path,options={}){const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{...options,headers:{...restHeaders(),...(options.headers||{})}});const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch(e){data=text}if(!r.ok)throw new Error((data&&data.message)||data?.hint||('HTTP '+r.status));return data}
+  async function sellerSyncCatalog(){
+    if(!isSeller()||!navigator.onLine)return false;
+    try{
+      const rows=await rest(PRODUCTS_TABLE+'?select=product_id,name,price,stock,unit,icon&active=eq.true&order=name.asc');
+      if(Array.isArray(rows)&&rows.length){
+        products=rows.map(r=>({id:r.product_id,name:r.name,price:Number(r.price)||0,cost:0,stock:Math.max(0,Number(r.stock)||0),unit:r.unit||'unidad',icon:r.icon||'',ipvInitialStock:Number(r.stock)||0,ipvEntries:0,ipvSales:0,ipvOtherExits:0}));
+        saveData('italy_products',products);ensureIPVData();
+      }
+      localStorage.setItem(SELLER_LAST_SYNC_KEY,new Date().toISOString());
+      return true;
+    }catch(e){console.warn('No se pudo descargar el catálogo del vendedor:',e);return false}
+  }
+  async function sellerUploadQueue(){
+    if(!isSeller()||!navigator.onLine||sellerSyncBusy||!sellerQueue.length)return;
+    sellerSyncBusy=true;
+    try{
+      for(const sale of sellerQueue.slice()){
+        try{
+          await rest(SYNC_TABLE,{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({id:sale.id,seller_device_id:deviceId,seller_name:'Vendedor',created_at:sale.date,payment:sale.payment,total:Number(sale.total)||0,items:sale.items,status:'pending'})});
+          sellerQueue=sellerQueue.filter(x=>x.id!==sale.id);saveQueue();
+          const local=sales.find(x=>x.id===sale.id);if(local){local.synced=true;local.sellerSyncPending=false;saveData('italy_sales',sales)}
+        }catch(e){console.warn('Venta del vendedor pendiente:',e);break}
+      }
+    }finally{sellerSyncBusy=false;renderSellerSummary()}
+  }
+  async function adminPublishCatalog(){
+    if(!isAdminLocal()||!navigator.onLine||adminSyncBusy)return;
+    adminSyncBusy=true;const st=document.getElementById('imAdminSyncStatus');if(st)st.textContent='Enviando catálogo al teléfono del vendedor…';
+    try{
+      const rows=(Array.isArray(products)?products:[]).map(p=>({product_id:String(p.id),name:p.name,price:Number(p.price)||0,stock:Math.max(0,Number(p.stock)||0),unit:p.unit||'unidad',icon:p.icon||'',active:true,updated_at:new Date().toISOString()}));
+      if(rows.length)await rest(PRODUCTS_TABLE,{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)});
+      if(st)st.textContent='✓ Catálogo sincronizado · '+new Date().toLocaleTimeString();
+    }catch(e){if(st)st.textContent='Sin conexión con el servidor de sincronización';console.warn(e)}finally{adminSyncBusy=false}
+  }
+  async function adminImportSellerSales(){
+    if(!isAdminLocal()||!navigator.onLine)return;
+    try{
+      const pending=await rest(SYNC_TABLE+'?status=eq.pending&order=created_at.asc&limit=100');
+      if(!Array.isArray(pending)||!pending.length)return;
+      let imported=0;
+      for(const remote of pending){
+        if(sales.some(s=>s.id===remote.id)){await rest(SYNC_TABLE+'?id=eq.'+encodeURIComponent(remote.id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({status:'imported',imported_at:new Date().toISOString()})});continue}
+        const items=Array.isArray(remote.items)?remote.items:[];
+        let stockOK=true;for(const i of items){const p=getProduct(i.productId);if(!p||Number(p.stock)<Number(i.quantity||0)){stockOK=false;break}}
+        if(!stockOK){console.warn('Venta del vendedor retenida por inventario insuficiente:',remote.id);continue}
+        items.forEach(i=>{const p=getProduct(i.productId);p.stock-=Number(i.quantity)||0;p.ipvSales=(Number(p.ipvSales)||0)+(Number(i.quantity)||0);ipvMovements.unshift({id:generateId(),date:remote.created_at,type:'sale',productId:p.id,quantity:Number(i.quantity)||0,saleId:remote.id,sellerDeviceId:remote.seller_device_id})});
+        const nums=sales.map(s=>Number(s.saleNumber)).filter(n=>Number.isInteger(n)&&n>0);const saleNumber=nums.length?Math.max(...nums)+1:1;
+        const sale={id:String(remote.id),saleNumber,date:remote.created_at,payment:remote.payment,items,total:Number(remote.total)||0,costTotal:items.reduce((a,i)=>a+(Number(i.cost)||0)*(Number(i.quantity)||0),0),profit:items.reduce((a,i)=>a+(Number(i.price)||0)*(Number(i.quantity)||0)-(Number(i.cost)||0)*(Number(i.quantity)||0),0),reverted:false,sellerDeviceId:remote.seller_device_id,sellerName:remote.seller_name||'Vendedor',synced:true};
+        sales.unshift(sale);saveData('italy_products',products);saveData('italy_sales',sales);saveData('italy_ipv_movements',ipvMovements);imported++;
+        await rest(SYNC_TABLE+'?id=eq.'+encodeURIComponent(remote.id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({status:'imported',imported_at:new Date().toISOString()})});
+      }
+      if(imported){renderAllLocal();const st=document.getElementById('imAdminSyncStatus');if(st)st.textContent='✓ '+imported+' venta(s) del vendedor recibida(s) · '+new Date().toLocaleTimeString()}
+    }catch(e){console.warn('No se pudieron importar ventas del vendedor:',e)}
+  }
+  async function adminSyncAll(){if(!isAdminLocal()||!navigator.onLine)return;await adminPublishCatalog();await adminImportSellerSales()}
+  window.italySyncSellerNow=async()=>{await adminSyncAll();alert('Sincronización del vendedor terminada. Revisa el estado en Usuarios y sincronización.')};
+
+  // El vendedor registra ventas localmente primero; Internet nunca es requisito para cobrar.
+  const previousCompleteSale=window.completeSale;
+  window.completeSale=function(){
+    if(!isSeller()){return previousCompleteSale()}
+    if(!cart.length)return;
+    for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<i.quantity){alert('No hay suficiente inventario.');return}}
+    const items=cart.map(i=>{const p=getProduct(i.productId);return{productId:p.id,name:p.name,quantity:i.quantity,price:Number(p.price),cost:0,subtotal:Number(p.price)*i.quantity}});
+    cart.forEach(i=>{const p=getProduct(i.productId);p.stock-=i.quantity;p.ipvSales=(Number(p.ipvSales)||0)+i.quantity;ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:'sale',productId:p.id,quantity:i.quantity,sellerDeviceId:deviceId})});
+    const total=items.reduce((s,i)=>s+i.subtotal,0);
+    const sale={id:'seller-'+generateUUID(),saleNumber:0,date:new Date().toISOString(),payment:document.getElementById('paymentMethod').value,items,total,costTotal:0,profit:0,reverted:false,sellerDeviceId:deviceId,sellerName:'Vendedor',sellerSyncPending:true,synced:false};
+    sales.unshift(sale);sellerQueue.push(sale);saveQueue();saveData('italy_products',products);saveData('italy_sales',sales);saveData('italy_ipv_movements',ipvMovements);
+    cart=[];closePaymentModal();renderSaleProducts();renderCart();renderSellerSummary();
+    document.getElementById('successDetails').innerHTML='<strong>Venta registrada</strong><br>Total: <strong>'+money(total)+'</strong><br>Pago con: '+esc(sale.payment)+'<br><strong>📱 Guardada en este teléfono.</strong>'+(navigator.onLine?'':'<br>📴 Se sincronizará cuando vuelva Internet.');
+    document.getElementById('successModal').classList.add('show');
+    if(navigator.onLine)sellerUploadQueue();
+  };
+
+  // El resumen del vendedor se actualiza después de cada render de ventas.
+  const oldRenderSales=window.renderSales;
+  window.renderSales=function(){if(typeof oldRenderSales==='function')oldRenderSales();if(isSeller())renderSellerSummary()};
+
+  // Al volver Internet: vendedor envía ventas y recibe catálogo; administrador publica catálogo e importa ventas.
+  window.addEventListener('online',async()=>{if(isSeller()){await sellerSyncCatalog();await sellerUploadQueue();renderSaleProducts();renderSellerSummary()}else if(isAdminLocal()){await adminSyncAll()}});
+  setInterval(async()=>{if(!navigator.onLine)return;if(isSeller()){await sellerSyncCatalog();await sellerUploadQueue()}else if(isAdminLocal()){await adminSyncAll()}},20000);
+
+  // La primera vez se elige el usuario. Después queda guardado en este teléfono.
+  function bootRoles(){
+    if(currentRole!=='admin'&&currentRole!=='seller'){roleOverlay();return}
+    if(currentRole==='seller')activateSellerUI();else activateAdminUI();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootRoles);else bootRoles();
+})();
+</script>
 </body>
 </html>
