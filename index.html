@@ -2774,18 +2774,19 @@ renderHomeDashboard();
 /* ===== CAJA FINAL — CAPITAL ACTUAL MENOS INVENTARIO AL COSTO ===== */
 (function(){
   function currentCapitalForCash(){
+    // Usa exactamente la misma fórmula que muestra "Capital actual".
     const profit=typeof getAccumulatedProfit==='function' ? Number(getAccumulatedProfit()||0) : 0;
-    const injections=Array.isArray(window.capitalInjections)
+    const injections=Array.isArray(capitalInjections)
       ? capitalInjections.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
-    const withdrawals=Array.isArray(window.capitalWithdrawals)
+    const withdrawals=Array.isArray(capitalWithdrawals)
       ? capitalWithdrawals.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
-    const deterioration=Array.isArray(window.deteriorationExits)
+    const deterioration=Array.isArray(deteriorationExits)
       ? deteriorationExits.reduce((sum,m)=>sum+Number(m.amount||0),0) : 0;
-    return Number(window.capitalInitial||0)+profit+injections-withdrawals-deterioration;
+    return Number(capitalInitial||0)+profit+injections-withdrawals-deterioration;
   }
 
   function inventoryCostForCash(){
-    return (Array.isArray(window.products)?products:[]).reduce((sum,p)=>{
+    return (Array.isArray(products)?products:[]).reduce((sum,p)=>{
       const stock=Math.max(0,Number(p.stock)||0);
       const cost=Math.max(0,Number(p.cost)||0);
       return sum+(stock*cost);
@@ -2795,13 +2796,11 @@ renderHomeDashboard();
   window.getCashInBox=function(){
     const currentCapital=currentCapitalForCash();
     const inventoryCost=inventoryCostForCash();
-    // Regla única de caja:
-    // Efectivo en caja = Capital actual - valor de la mercancía al costo.
-    // No se modifica aquí la fórmula del capital actual.
-    return Math.max(0,currentCapital-inventoryCost);
+    // ÚNICA REGLA DE EFECTIVO EN CAJA:
+    // Efectivo en caja = Capital actual - valor del inventario al costo.
+    return currentCapital-inventoryCost;
   };
 
-  // Actualizar inmediatamente las tarjetas que muestran efectivo.
   function refreshCashOnly(){
     const cash=window.getCashInBox();
     const cashEl=document.getElementById('cashInBoxTotal');
