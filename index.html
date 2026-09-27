@@ -1701,23 +1701,28 @@ async function cloudLoadAll(){
       ipvOtherExits:Number(p.ipv_other_exits)||0
     }));
 
-    sales=(sr.data||[]).map(s=>({
-      id:s.id,
-      date:s.created_at,
-      payment:s.payment,
-      total:Number(s.total),
-      costTotal:Number(s.cost_total),
-      profit:Number(s.profit),
-      userId:s.user_id,
-      items:(s.sale_items||[]).map(i=>({
+    sales=(sr.data||[]).map(s=>{
+      const items=(s.sale_items||[]).map(i=>({
         productId:i.product_id,
         name:i.product_name,
-        quantity:Number(i.quantity),
-        price:Number(i.price),
-        cost:Number(i.cost),
-        subtotal:Number(i.subtotal)
-      }))
-    }));
+        quantity:Number(i.quantity)||0,
+        price:Number(i.price)||0,
+        cost:Number(i.cost)||0,
+        subtotal:Number(i.subtotal)||0
+      }));
+      const normalized={
+        id:s.id,
+        date:s.created_at,
+        payment:s.payment,
+        total:Number(s.total)||0,
+        costTotal:Number(s.cost_total)||0,
+        profit:Number(s.profit)||0,
+        userId:s.user_id,
+        items
+      };
+      normalized.profit=calculateSaleProfit(normalized);
+      return normalized;
+    });
 
     ipvMovements=(mr.data||[]).map(m=>({
       id:m.id,
@@ -2820,7 +2825,7 @@ function renderHomeDashboard(){
   const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
   set("homeSalesCount",String(ts.length));
   set("homeSalesTotal",money(ts.reduce((a,s)=>a+Number(s.total||0),0)));
-  set("homeProfit",money(ts.reduce((a,s)=>a+Number(s.profit||0),0)));
+  set("homeProfit",money(ts.filter(s=>!s.reverted).reduce((a,s)=>a+calculateSaleProfit(s),0)));
   set("homeCash",money(getCashInBox()));
 }
 const _italyOriginalShowScreen=showScreen;
@@ -3019,25 +3024,60 @@ renderHomeDashboard();
   }
 
   async function loadSupabaseV8(){
-    if(window.supabase)return true;if(!navigator.onLine)return false;
+    if(window.supabase)return true;
+    if(!navigator.onLine)return false;
+
+    // Use the UMD build because it explicitly exposes window.supabase.
+    // The previous +esm <script type="module"> did not create window.supabase.
     try{
-      await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";s.type="module";s.onload=resolve;s.onerror=reject;document.head.appendChild(s)});
-      return !!window.supabase;
-    }catch(e){
-      try{await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";s.onload=resolve;s.onerror=reject;document.head.appendChild(s)});return !!window.supabase}catch(e2){return false}
-    }
+      await new Promise((resolve,reject)=>{
+        const s=document.createElement("script");
+        s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";
+        s.onload=resolve;
+        s.onerror=reject;
+        document.head.appendChild(s);
+      });
+      if(window.supabase)return true;
+    }catch(e){}
+
+    // Final fallback: load the ESM module correctly and expose the client
+    // factory on window for the rest of this legacy HTML application.
+    try{
+      const mod=await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+      if(mod?.createClient){
+        window.supabase={createClient:mod.createClient};
+        return true;
+      }
+    }catch(e){}
+
+    return false;
   }
 
   async function ensureCloudV8(){
-    if(cloud)return true;if(!navigator.onLine)return false;
-    const ok=await loadSupabaseV8();if(!ok)return false;
+    if(cloud)return true;
+    if(!navigator.onLine)return false;
+
+    const ok=await loadSupabaseV8();
+    if(!ok)return false;
+
     try{
+      // The V8 bridge is intentionally passwordless. Do not make catalog
+      // synchronization depend on Anonymous Auth being enabled.
       cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-      let {data}=await cloud.auth.getSession();
-      if(!data.session){const anon=await cloud.auth.signInAnonymously();if(anon.error){console.warn("Supabase Anonymous Auth no está habilitado:",anon.error);cloud=null;return false}data=anon.data}
-      if(data?.session)cloudUser=data.session.user;
-      return !!cloudUser;
-    }catch(e){console.warn("No se pudo iniciar la sincronización:",e);cloud=null;return false}
+
+      try{
+        const {data}=await cloud.auth.getSession();
+        if(data?.session)cloudUser=data.session.user;
+      }catch(authReadError){
+        console.warn("No se pudo leer la sesión; se continuará como dispositivo sin sesión.",authReadError);
+      }
+
+      return !!cloud;
+    }catch(e){
+      console.warn("No se pudo iniciar la sincronización:",e);
+      cloud=null;
+      return false;
+    }
   }
 
   function saveSellerQueue(){saveData(SELLER_QUEUE_KEY,sellerQueue)}
@@ -3074,14 +3114,85 @@ renderHomeDashboard();
       if(rpcError){console.warn("Venta del vendedor pendiente:",rpcError);break}
       await cloud.from("seller_sales").update({synced_at:new Date().toISOString(),server_sale_id:String(serverId)}).eq("sale_id",row.sale_id).eq("device_id",row.device_id);
     }
-    await cloudLoadAll();
+    // No dependemos de cloudLoadAll() aquí: esa función pertenece al
+    // módulo antiguo de autenticación. La venta ya fue confirmada por el
+    // RPC; ahora actualizamos el snapshot local del administrador.
+    await refreshAdminFromSellerBridgeV8();
+  }
+
+  async function refreshAdminFromSellerBridgeV8(){
+    if(!roleIsAdmin())return;
+    const rows=await cloud.from("seller_sales").select("*").order("sale_date",{ascending:true});
+    if(rows.error){
+      console.warn("No se pudo actualizar el administrador desde seller_sales:",rows.error);
+      return;
+    }
+
+    for(const row of (rows.data||[])){
+      if(!row.server_sale_id)continue;
+      const exists=(Array.isArray(sales)?sales:[]).some(s=>String(s.id)===String(row.sale_id));
+      if(exists)continue;
+
+      const items=(Array.isArray(row.items)?row.items:[]).map(i=>{
+        const p=getProduct(i.productId);
+        const price=Number(i.price ?? p?.price ?? 0)||0;
+        const cost=Number(i.cost ?? p?.cost ?? 0)||0;
+        const quantity=Number(i.quantity)||0;
+        return {
+          productId:i.productId,
+          name:i.name||p?.name||"Producto",
+          quantity,
+          price,
+          cost,
+          subtotal:Number(i.subtotal)||price*quantity
+        };
+      });
+
+      const total=Number(row.total)||items.reduce((s,i)=>s+i.subtotal,0);
+      const costTotal=items.reduce((s,i)=>s+i.cost*i.quantity,0);
+      const sale={
+        id:String(row.sale_id),
+        date:row.sale_date,
+        payment:row.payment_method||"Efectivo",
+        total,
+        costTotal,
+        profit:total-costTotal,
+        userId:null,
+        sellerDeviceId:row.device_id,
+        sellerName:row.seller_name||"Vendedor",
+        synced:true,
+        serverId:String(row.server_sale_id),
+        source:"seller_v8",
+        items
+      };
+
+      sales.unshift(sale);
+
+      // El RPC ya descontó el inventario en Supabase. El administrador
+      // necesita reflejar ese descuento en su copia local.
+      for(const i of items){
+        const p=getProduct(i.productId);
+        if(p)p.stock=Math.max(0,(Number(p.stock)||0)-i.quantity);
+      }
+    }
+
+    saveData("italy_sales",sales);
+    saveData("italy_products",products);
+    renderSaleProducts();
+    renderInventory();
+    renderSales();
+    renderCapital();
   }
 
   async function pullSharedProductsForSellerV8(){
     if(roleIsAdmin()||!navigator.onLine)return;
     if(!await ensureCloudV8())return;
     const {data,error}=await cloud.from("products").select("*").order("created_at",{ascending:true});
-    if(error){console.warn("No se pudieron actualizar los productos del vendedor:",error);return}
+    if(error){
+      console.warn("No se pudieron actualizar los productos del vendedor:",error);
+      updateMultiuserStatusV8("⚠️ Catálogo no disponible · revisa permisos de lectura de products");
+      return;
+    }
     if(Array.isArray(data)){
       products=data.map(p=>({id:p.id,name:p.name,price:Number(p.price)||0,cost:Number(p.cost)||0,stock:Number(p.stock)||0,unit:p.unit||"unidad",icon:p.icon||"",ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0}));
       saveData("italy_products",products);ensureIPVData();renderSaleProducts();renderCart();renderSellerSummaryV8();
