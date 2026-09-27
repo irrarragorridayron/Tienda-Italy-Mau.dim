@@ -2888,19 +2888,24 @@ renderHomeDashboard();
 
 
 <script>
-/* ===== MULTIUSUARIO V8 — ADMIN / VENDEDOR SIN CONTRASEÑA =====
-   - Un selector local identifica Administrador o Vendedor.
-   - Ambos trabajan offline.
-   - Cuando hay Internet se usa Supabase + sesión anónima solo para sincronizar.
-   - El vendedor solo ve ventas y su resumen.
-   - El administrador conserva toda la aplicación actual.
+/* ===== MULTIUSUARIO V8 — PUENTE VENDEDOR ↔ ADMINISTRADOR =====
+   - Sin contraseñas.
+   - Ambos teléfonos trabajan offline.
+   - El vendedor guarda sus ventas localmente.
+   - seller_sales funciona como bandeja de sincronización.
+   - register_seller_sale registra la venta una sola vez en sales/sale_items
+     y actualiza inventario de forma transaccional.
+   - El administrador recibe las ventas aunque el vendedor haya estado offline.
 */
 (function(){
   const ROLE_KEY="italy_role_v8";
   const DEVICE_KEY="italy_device_id_v8";
-  const SYNC_FLAG="italy_multiuser_v8";
+  const SELLER_QUEUE_KEY="italy_seller_bridge_pending_v8";
+  const SELLER_NAME_KEY="italy_seller_name_v8";
   let currentRole=localStorage.getItem(ROLE_KEY)||"";
   let myDeviceId=localStorage.getItem(DEVICE_KEY);
+  let sellerQueue=loadData(SELLER_QUEUE_KEY,[]);
+  if(!Array.isArray(sellerQueue))sellerQueue=[];
   if(!myDeviceId){myDeviceId="dev-"+generateUUID();localStorage.setItem(DEVICE_KEY,myDeviceId)}
 
   function roleIsAdmin(){return currentRole==="admin"}
@@ -2918,76 +2923,57 @@ renderHomeDashboard();
         <p>¿Quién utilizará la tienda?</p>
         <button class="role-btn-v8 admin" onclick="selectRoleV8('admin')">👑 Administrador</button>
         <button class="role-btn-v8 seller" onclick="selectRoleV8('seller')">🧑‍💼 Vendedor</button>
-        <div class="role-note-v8">Sin contraseña · El funcionamiento de la tienda no depende de Internet.</div>
+        <div class="role-note-v8">Sin contraseña · Ambos teléfonos pueden trabajar sin Internet.</div>
       </div>`;
     document.body.appendChild(overlay);
   }
 
   function ensureSellerScreen(){
     if(document.getElementById("screen-seller-summary"))return;
-    const main=document.querySelector("main");
-    if(!main)return;
+    const main=document.querySelector("main");if(!main)return;
     const section=document.createElement("section");
-    section.id="screen-seller-summary";
-    section.className="screen";
+    section.id="screen-seller-summary";section.className="screen";
     section.innerHTML=`
       <h2 class="section-title">Resumen del vendedor</h2>
-      <p class="subtitle">Ventas realizadas por este teléfono.</p>
+      <p class="subtitle">Ventas realizadas desde este teléfono.</p>
       <div class="stats-grid">
         <div class="stat"><div class="stat-label">PRODUCTOS VENDIDOS HOY</div><div id="sellerUnitsToday" class="stat-value">0</div></div>
         <div class="stat stat-cash"><div class="stat-label">TOTAL A DEPOSITAR</div><div id="sellerDepositToday" class="stat-value">$0.00</div></div>
       </div>
-      <div class="card">
-        <h3 style="margin-top:0">Vendido por producto</h3>
-        <div id="sellerProductsSummary"><div class="empty">Todavía no hay ventas.</div></div>
-      </div>
-      <div class="card">
-        <h3 style="margin-top:0">Ventas de hoy</h3>
-        <div id="sellerSalesSummary"><div class="empty">Todavía no hay ventas.</div></div>
-      </div>`;
+      <div class="card"><h3 style="margin-top:0">Vendido por producto</h3><div id="sellerProductsSummary"><div class="empty">Todavía no hay ventas.</div></div></div>
+      <div class="card"><h3 style="margin-top:0">Ventas de hoy</h3><div id="sellerSalesSummary"><div class="empty">Todavía no hay ventas.</div></div></div>`;
     main.appendChild(section);
   }
 
   function ensureRoleBar(){
-    let bar=document.getElementById("roleBarV8");
-    if(bar)return;
+    let bar=document.getElementById("roleBarV8");if(bar)return;
     bar=document.createElement("div");bar.id="roleBarV8";
     bar.innerHTML=`<span id="roleBarTextV8"></span><button onclick="switchRoleV8()">Cambiar</button>`;
     document.body.appendChild(bar);
   }
 
   function configureNavigation(){
-    const admin=roleIsAdmin();
-    ensureSellerScreen();
-    const screens=["home","sale","inventory","sales","products"];
-    screens.forEach(n=>{
-      const el=document.getElementById("screen-"+n);if(el)el.style.display=admin?"":"none";
-    });
+    const admin=roleIsAdmin();ensureSellerScreen();
+    ["home","sale","inventory","sales","products"].forEach(n=>{const el=document.getElementById("screen-"+n);if(el)el.style.display=admin?"":"none"});
     const seller=document.getElementById("screen-seller-summary");if(seller)seller.style.display=admin?"none":"";
     const more=document.querySelector(".bottom-nav .nav-btn:last-child");
     const inv=document.querySelector(".bottom-nav .nav-btn:nth-child(3)");
     const home=document.querySelector(".bottom-nav .nav-btn:nth-child(1)");
     if(admin){
-      if(home)home.style.display="";
-      if(inv)inv.style.display="";
-      if(more)more.style.display="";
-      const sellerNav=document.getElementById("sellerSummaryNavV8");if(sellerNav)sellerNav.remove();
-      showScreen("home");
+      if(home)home.style.display="";if(inv)inv.style.display="";if(more)more.style.display="";
+      document.getElementById("sellerSummaryNavV8")?.remove();showScreen("home");
     }else{
-      if(home)home.style.display="none";
-      if(inv)inv.style.display="none";
-      if(more)more.style.display="none";
+      if(home)home.style.display="none";if(inv)inv.style.display="none";if(more)more.style.display="none";
       let nav=document.getElementById("sellerSummaryNavV8");
       if(!nav){
         nav=document.createElement("button");nav.id="sellerSummaryNavV8";nav.className="nav-btn";
         nav.innerHTML='<img class="nav-icon-img" src="./assets/icon-reportes.png" alt="">Resumen';
         nav.onclick=()=>showSellerScreenV8("summary");
-        const bn=document.querySelector(".bottom-nav");if(bn)bn.appendChild(nav);
+        document.querySelector(".bottom-nav")?.appendChild(nav);
       }
       document.querySelectorAll(".bottom-nav .nav-btn").forEach(b=>b.classList.remove("active"));
       const saleBtn=document.querySelector(".bottom-nav .nav-btn:nth-child(2)");if(saleBtn){saleBtn.style.display="";saleBtn.classList.add("active")}
-      nav.classList.remove("active");
-      showSellerScreenV8("sale");
+      nav.classList.remove("active");showSellerScreenV8("sale");
     }
     const moreModal=document.getElementById("moreModal");if(moreModal)moreModal.classList.remove("show");
     const roleText=document.getElementById("roleBarTextV8");if(roleText)roleText.textContent=admin?"👑 Administrador":"🧑‍💼 Vendedor";
@@ -2998,13 +2984,11 @@ renderHomeDashboard();
   function showSellerScreenV8(name){
     if(roleIsAdmin())return;
     document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
-    const target=document.getElementById(name==="sale"?"screen-sale":"screen-seller-summary");
-    if(target)target.classList.add("active");
+    const target=document.getElementById(name==="sale"?"screen-sale":"screen-seller-summary");if(target)target.classList.add("active");
     document.querySelectorAll(".bottom-nav .nav-btn").forEach(b=>b.classList.remove("active"));
     if(name==="sale")document.querySelector(".bottom-nav .nav-btn:nth-child(2)")?.classList.add("active");
     else document.getElementById("sellerSummaryNavV8")?.classList.add("active");
-    if(name==="sale"){renderSaleProducts();renderCart()}
-    else renderSellerSummaryV8();
+    if(name==="sale"){renderSaleProducts();renderCart()}else renderSellerSummaryV8();
     window.scrollTo(0,0);
   }
   window.showSellerScreenV8=showSellerScreenV8;
@@ -3018,143 +3002,132 @@ renderHomeDashboard();
   };
   window.switchRoleV8=function(){
     if(!confirm("¿Cambiar de usuario en este teléfono?"))return;
-    localStorage.removeItem(ROLE_KEY);currentRole="";
-    document.getElementById("roleBarV8")?.remove();
-    ensureRoleUI();
+    localStorage.removeItem(ROLE_KEY);currentRole="";document.getElementById("roleBarV8")?.remove();ensureRoleUI();
   };
 
   function sellerSales(){
-    const today=localDateKey();
-    const uid=cloudUser?.id||"";
-    return (Array.isArray(sales)?sales:[]).filter(s=>localDateKey(s.date)===today && (s.deviceId===myDeviceId || (uid && s.userId===uid)));
+    const today=localDateKey(),uid=cloudUser?.id||"";
+    return (Array.isArray(sales)?sales:[]).filter(s=>localDateKey(s.date)===today && (s.sellerDeviceId===myDeviceId||s.deviceId===myDeviceId||(uid&&s.userId===uid)));
   }
   function renderSellerSummaryV8(){
     if(roleIsAdmin())return;
-    const list=sellerSales();
-    const byProduct={};let units=0,total=0;
+    const list=sellerSales();let units=0,total=0;const byProduct={};
     list.forEach(s=>{total+=Number(s.total)||0;(s.items||[]).forEach(i=>{const k=i.productId||i.name;byProduct[k]??={name:i.name,qty:0,total:0};byProduct[k].qty+=Number(i.quantity)||0;byProduct[k].total+=Number(i.subtotal)||0;units+=Number(i.quantity)||0})});
     const u=document.getElementById("sellerUnitsToday"),d=document.getElementById("sellerDepositToday");if(u)u.textContent=String(units);if(d)d.textContent=money(total);
-    const pc=document.getElementById("sellerProductsSummary");
-    if(pc)pc.innerHTML=Object.values(byProduct).length?Object.values(byProduct).sort((a,b)=>b.total-a.total).map(x=>`<div class="seller-row-v8"><span><strong>${esc(x.name)}</strong><small>${x.qty} unidad${x.qty===1?"":"es"}</small></span><strong>${money(x.total)}</strong></div>`).join(""): '<div class="empty">Todavía no hay ventas hoy.</div>';
-    const sc=document.getElementById("sellerSalesSummary");
-    if(sc)sc.innerHTML=list.length?list.map(s=>`<div class="seller-sale-v8"><div><strong>${s.id?esc(String(s.id).slice(-6)):'Venta'}</strong><small>${new Date(s.date).toLocaleTimeString()}</small></div><strong>${money(s.total)}</strong></div>`).join(""): '<div class="empty">Todavía no hay ventas hoy.</div>';
+    const pc=document.getElementById("sellerProductsSummary");if(pc)pc.innerHTML=Object.values(byProduct).length?Object.values(byProduct).sort((a,b)=>b.total-a.total).map(x=>`<div class="seller-row-v8"><span><strong>${esc(x.name)}</strong><small>${x.qty} unidad${x.qty===1?"":"es"}</small></span><strong>${money(x.total)}</strong></div>`).join(""):'<div class="empty">Todavía no hay ventas hoy.</div>';
+    const sc=document.getElementById("sellerSalesSummary");if(sc)sc.innerHTML=list.length?list.map(s=>`<div class="seller-sale-v8"><div><strong>Venta</strong><small>${new Date(s.date).toLocaleTimeString()}</small></div><strong>${money(s.total)}</strong></div>`).join(""):'<div class="empty">Todavía no hay ventas hoy.</div>';
   }
 
   async function loadSupabaseV8(){
-    if(window.supabase)return true;
-    if(!navigator.onLine)return false;
+    if(window.supabase)return true;if(!navigator.onLine)return false;
     try{
-      await new Promise((resolve,reject)=>{
-        const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";s.type="module";
-        s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
-      });
+      await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";s.type="module";s.onload=resolve;s.onerror=reject;document.head.appendChild(s)});
       return !!window.supabase;
     }catch(e){
-      // Fallback: classic UMD bundle if the module form is not accepted by the browser.
-      try{
-        await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";s.onload=resolve;s.onerror=reject;document.head.appendChild(s)});
-        return !!window.supabase;
-      }catch(e2){return false}
+      try{await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";s.onload=resolve;s.onerror=reject;document.head.appendChild(s)});return !!window.supabase}catch(e2){return false}
     }
   }
 
   async function ensureCloudV8(){
-    if(cloud)return true;
-    if(!navigator.onLine)return false;
+    if(cloud)return true;if(!navigator.onLine)return false;
     const ok=await loadSupabaseV8();if(!ok)return false;
     try{
       cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
       let {data}=await cloud.auth.getSession();
-      if(!data.session){
-        const anon=await cloud.auth.signInAnonymously();
-        if(anon.error){console.warn("Supabase Anonymous Auth no está habilitado:",anon.error);cloud=null;return false}
-        data=anon.data;
-      }
+      if(!data.session){const anon=await cloud.auth.signInAnonymously();if(anon.error){console.warn("Supabase Anonymous Auth no está habilitado:",anon.error);cloud=null;return false}data=anon.data}
       if(data?.session)cloudUser=data.session.user;
       return !!cloudUser;
     }catch(e){console.warn("No se pudo iniciar la sincronización:",e);cloud=null;return false}
   }
 
-  async function pushPendingSalesV8(){
-    if(!await ensureCloudV8() || !navigator.onLine || !pendingSales.length)return;
-    for(const pending of pendingSales.slice()){
-      const {data:saleId,error}=await cloud.rpc("register_sale",{p_payment:pending.payment,p_items:pending.items});
-      if(error){console.warn("Venta pendiente no sincronizada:",error);break}
-      const local=sales.find(s=>s.id===pending.localId);
-      if(local){local.synced=true;local.serverId=String(saleId);local.userId=cloudUser.id;local.syncError="";}
-      pendingSales=pendingSales.filter(x=>x.localId!==pending.localId);savePendingSales();saveData("italy_sales",sales);
-    }
+  function saveSellerQueue(){saveData(SELLER_QUEUE_KEY,sellerQueue)}
+  function sellerName(){return localStorage.getItem(SELLER_NAME_KEY)||"Vendedor"}
+
+  function makeSellerBridgeRow(sale){
+    return {sale_id:String(sale.id),device_id:myDeviceId,seller_name:sellerName(),sale_number:String(sale.id),total:Number(sale.total)||0,payment_method:String(sale.payment||"Efectivo"),sale_date:sale.date,items:sale.items||[],synced_at:null};
   }
 
-  async function pullSharedDataV8(){
-    if(!await ensureCloudV8() || !navigator.onLine)return false;
-    try{
-      const [pr,sr,mr]=await Promise.all([
-        cloud.from("products").select("*").order("created_at",{ascending:true}),
-        cloud.from("sales").select("*,sale_items(*)").order("created_at",{ascending:false}),
-        cloud.from("inventory_movements").select("*").order("created_at",{ascending:false})
-      ]);
-      if(pr.error||sr.error||mr.error){console.warn("No se pudo leer la nube",pr.error||sr.error||mr.error);return false}
-      if(Array.isArray(pr.data)&&pr.data.length){
-        products=pr.data.map(p=>({id:p.id,name:p.name,price:Number(p.price)||0,cost:Number(p.cost)||0,stock:Number(p.stock)||0,unit:p.unit||"unidad",icon:p.icon||"",ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0}));
-        saveData("italy_products",products);
-      }
-      if(Array.isArray(sr.data)){
-        const cloudSales=sr.data.map(s=>({id:s.id,date:s.created_at,payment:s.payment,total:Number(s.total)||0,costTotal:Number(s.cost_total)||0,profit:Number(s.profit)||0,userId:s.user_id,items:(s.sale_items||[]).map(i=>({productId:i.product_id,name:i.product_name,quantity:Number(i.quantity)||0,price:Number(i.price)||0,cost:Number(i.cost)||0,subtotal:Number(i.subtotal)||0}))}));
-        const pendingIds=new Set(pendingSales.map(x=>x.localId));
-        const localKeep=(sales||[]).filter(s=>pendingIds.has(s.id)||s.offline&&!s.synced);
-        const merged=[];const seen=new Set();
-        [...cloudSales,...localKeep].forEach(s=>{const key=s.serverId||s.id;if(seen.has(key))return;seen.add(key);merged.push(s)});
-        sales=merged;saveData("italy_sales",sales);
-      }
-      if(Array.isArray(mr.data)){
-        ipvMovements=mr.data.map(m=>({id:m.id,date:m.created_at,type:m.type,reason:m.reason||null,productId:m.product_id,quantity:Number(m.quantity)||0,unitCost:Number(m.unit_cost)||0,cashAmount:Number(m.cash_amount)||0,userId:m.user_id}));
-        saveData("italy_ipv_movements",ipvMovements);
-      }
-      ensureIPVData();renderSaleProducts();renderCart();renderInventory();renderSales();renderSellerSummaryV8();renderProductsAdmin();renderCapital();return true;
-    }catch(e){console.warn("Error sincronizando:",e);return false}
+  async function pushSellerSalesV8(){
+    if(roleIsAdmin()||!sellerQueue.length||!navigator.onLine)return;
+    if(!await ensureCloudV8())return;
+    for(const item of sellerQueue.slice()){
+      if(!navigator.onLine)break;
+      const row=makeSellerBridgeRow(item.sale);
+      const {error:upsertError}=await cloud.from("seller_sales").upsert(row,{onConflict:"sale_id,device_id"});
+      if(upsertError){console.warn("Venta del vendedor no enviada:",upsertError);break}
+      const {data:serverId,error}=await cloud.rpc("register_seller_sale",{p_sale_id:row.sale_id,p_device_id:row.device_id,p_seller_name:row.seller_name,p_payment:row.payment_method,p_sale_date:row.sale_date,p_items:row.items});
+      if(error){console.warn("Venta del vendedor quedó en seller_sales y será procesada por el administrador:",error);break}
+      const local=sales.find(s=>s.id===item.sale.id);if(local){local.synced=true;local.serverId=String(serverId);local.syncError=""}
+      sellerQueue=sellerQueue.filter(q=>q.sale.id!==item.sale.id);saveSellerQueue();saveData("italy_sales",sales);
+    }
+    renderSellerSummaryV8();updateMultiuserStatusV8();
+  }
+
+  async function pullSellerSalesToAdminV8(){
+    if(!roleIsAdmin()||!navigator.onLine)return;
+    if(!await ensureCloudV8())return;
+    const {data,error}=await cloud.from("seller_sales").select("*").order("sale_date",{ascending:true});
+    if(error){console.warn("No se pudieron leer las ventas del vendedor:",error);return}
+    for(const row of (data||[])){
+      if(row.synced_at)continue;
+      const {data:serverId,error:rpcError}=await cloud.rpc("register_seller_sale",{p_sale_id:row.sale_id,p_device_id:row.device_id,p_seller_name:row.seller_name||"Vendedor",p_payment:row.payment_method||"Efectivo",p_sale_date:row.sale_date,p_items:row.items||[]});
+      if(rpcError){console.warn("Venta del vendedor pendiente:",rpcError);break}
+      await cloud.from("seller_sales").update({synced_at:new Date().toISOString(),server_sale_id:String(serverId)}).eq("sale_id",row.sale_id).eq("device_id",row.device_id);
+    }
+    await cloudLoadAll();
+  }
+
+  async function pullSharedProductsForSellerV8(){
+    if(roleIsAdmin()||!navigator.onLine)return;
+    if(!await ensureCloudV8())return;
+    const {data,error}=await cloud.from("products").select("*").order("created_at",{ascending:true});
+    if(error){console.warn("No se pudieron actualizar los productos del vendedor:",error);return}
+    if(Array.isArray(data)){
+      products=data.map(p=>({id:p.id,name:p.name,price:Number(p.price)||0,cost:Number(p.cost)||0,stock:Number(p.stock)||0,unit:p.unit||"unidad",icon:p.icon||"",ipvInitialStock:Number(p.ipv_initial_stock)||0,ipvEntries:Number(p.ipv_entries)||0,ipvSales:Number(p.ipv_sales)||0,ipvOtherExits:Number(p.ipv_other_exits)||0}));
+      saveData("italy_products",products);ensureIPVData();renderSaleProducts();renderCart();renderSellerSummaryV8();
+    }
   }
 
   async function startMultiuserSyncV8(){
-    if(!navigator.onLine)return;
-    if(!await ensureCloudV8()){
-      updateMultiuserStatusV8("⚠️ Sincronización no disponible · Modo offline");return;
+    if(!navigator.onLine){updateMultiuserStatusV8();return}
+    if(!await ensureCloudV8()){updateMultiuserStatusV8("⚠️ Sincronización no disponible · Modo offline");return}
+    if(roleIsAdmin()){
+      await pullSellerSalesToAdminV8();
+    }else{
+      await pushSellerSalesV8();
+      await pullSharedProductsForSellerV8();
     }
-    await pushPendingSalesV8();
-    await pullSharedDataV8();
     updateMultiuserStatusV8();
   }
+
   function updateMultiuserStatusV8(msg){
     const el=document.getElementById("offlineStatus");if(!el)return;
+    const n=sellerQueue.length;
     if(msg){el.className="offline-status pending";el.textContent=msg;return}
-    const n=pendingSales.length;
-    if(!navigator.onLine){el.className="offline-status offline";el.textContent=n?`📴 Sin Internet · ${n} venta pendiente`+(n===1?"":"s"):"📴 Sin Internet · Modo offline"}
+    if(!navigator.onLine){el.className="offline-status offline";el.textContent=n?`📴 Sin Internet · ${n} venta pendiente${n===1?"":"s"}`:"📴 Sin Internet · Modo offline"}
     else if(n){el.className="offline-status pending";el.textContent=`🔄 ${n} venta${n===1?"":"s"} pendiente${n===1?"":"s"}`}
     else{el.className="offline-status";el.textContent="☁️ Sincronizado"}
+    el.style.display="block";
   }
 
-  const originalCompleteSale=completeSale;
-  completeSale=function(){
-    const before=sales.length;
-    originalCompleteSale();
-    if(sales.length>before){
-      const sale=sales[0];
-      sale.deviceId=myDeviceId;
-      sale.userId=cloudUser?.id||null;
-      sale.offline=!navigator.onLine;
-      sale.synced=false;
-      saveData("italy_sales",sales);
-      pendingSales.push({localId:sale.id,createdAt:sale.date,payment:sale.payment,items:(sale.items||[]).map(i=>({productId:i.productId,quantity:i.quantity}))});
-      savePendingSales();
-      renderSellerSummaryV8();
-      if(navigator.onLine)startMultiuserSyncV8();
-      updateMultiuserStatusV8();
-    }
+  const originalCompleteSaleV8=window.completeSale;
+  window.completeSale=async function(){
+    if(roleIsAdmin()){return originalCompleteSaleV8.apply(this,arguments)}
+    if(!cart.length)return;
+    for(const i of cart){const p=getProduct(i.productId);if(!p||Number(p.stock)<Number(i.quantity)){alert("No hay suficiente inventario.");return}}
+    const payment=document.getElementById("paymentMethod").value;
+    const sale=createLocalSaleFromCart(payment);
+    sale.sellerDeviceId=myDeviceId;sale.deviceId=myDeviceId;sale.sellerName=sellerName();sale.offline=!navigator.onLine;sale.synced=false;sale.source="seller_v8";
+    applyLocalSale(sale);sales.unshift(sale);saveData("italy_products",products);saveData("italy_sales",sales);saveData("italy_ipv_movements",ipvMovements);
+    sellerQueue.push({sale});saveSellerQueue();cart=[];
+    closePaymentModal();renderSaleProducts();renderCart();renderInventory();renderSales();renderSellerSummaryV8();
+    document.getElementById("successDetails").innerHTML=`Total: <strong>${money(sale.total)}</strong><br>Pago con: ${esc(sale.payment)}<br><strong>${navigator.onLine?"☁️ Enviando a la tienda…":"📴 Guardada en este teléfono. Se sincronizará al volver Internet."}</strong>`;
+    document.getElementById("successModal").classList.add("show");
+    if(navigator.onLine)await pushSellerSalesV8();
   };
 
-  // Vendedor no puede ejecutar funciones administrativas.
-  const adminOnlyNames=["openProductModal","deleteProduct","saveIPVMovement","saveInitialCapital","registerCapitalInjection","registerCapitalWithdrawal","registerDeteriorationExit","registerCashExpense","initialStoreSetupAdmin","importLocalProductsToCloud"];
-  adminOnlyNames.forEach(name=>{
+  // El vendedor no puede ejecutar funciones administrativas.
+  ["openProductModal","deleteProduct","saveIPVMovement","saveInitialCapital","registerCapitalInjection","registerCapitalWithdrawal","registerDeteriorationExit","registerCashExpense","initialStoreSetupAdmin","importLocalProductsToCloud"].forEach(name=>{
     if(typeof window[name]==="function"){
       const old=window[name];window[name]=function(...args){if(!roleIsAdmin()){alert("Esta función pertenece al administrador.");return}return old.apply(this,args)};
     }
@@ -3172,6 +3145,7 @@ renderHomeDashboard();
   bootV8();
 })();
 </script>
+
 <style>
 /* ===== MULTIUSUARIO V8 ===== */
 #roleOverlayV8{position:fixed;inset:0;z-index:5000;background:radial-gradient(circle at 50% 10%,#241b24,#050505 65%);display:flex;align-items:center;justify-content:center;padding:20px}
