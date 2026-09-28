@@ -1251,12 +1251,36 @@ function setStock(id){
   saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);renderInventory();renderSaleProducts()
 }
 
+/* ================================================================
+   GANANCIAS V13 — CORRECCIÓN
+   La ganancia no depende de s.profit guardado.
+   Se recalcula desde cada línea: (precio - costo) × cantidad.
+   Si una venta antigua no tiene líneas, se conserva su profit histórico.
+   ================================================================ */
+function calculateSaleProfitV13(s){
+  if(!s || s.reverted)return 0;
+  const items=Array.isArray(s.items)?s.items:[];
+  if(!items.length)return Number(s.profit||0)||0;
+  return items.reduce((sum,i)=>{
+    const qty=Math.max(0,Number(i.quantity)||0);
+    const price=Number(i.price)||0;
+    let cost=Number(i.cost)||0;
+    // Si la venta sincronizada no trae costo, tomarlo del producto actual.
+    if(cost===0 && i.productId){
+      const p=getProduct(i.productId);
+      if(p)cost=Number(p.cost)||0;
+    }
+    return sum+(price-cost)*qty;
+  },0);
+}
 function getAccumulatedProfit(){
-  return sales.reduce((sum,s)=>sum+Number(s.profit||0),0);
+  return (Array.isArray(sales)?sales:[]).reduce((sum,s)=>sum+calculateSaleProfitV13(s),0);
 }
 function getTodayProfit(){
   const today=localDateKey();
-  return sales.filter(s=>localDateKey(s.date)===today).reduce((sum,s)=>sum+Number(s.profit||0),0);
+  return (Array.isArray(sales)?sales:[])
+    .filter(s=>!s.reverted && localDateKey(s.date)===today)
+    .reduce((sum,s)=>sum+calculateSaleProfitV13(s),0);
 }
 function getCashInBox(){
   // El capital inicial se considera el efectivo inicial de la caja.
