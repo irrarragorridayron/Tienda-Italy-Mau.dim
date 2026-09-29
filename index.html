@@ -23,7 +23,7 @@ main{max-width:700px;margin:auto;padding:15px}.screen{display:none}.screen.activ
 .product-price{margin-top:6px;font-size:15px;color:#16803c;font-weight:bold}.stock{margin-top:5px;color:#777;font-size:12px}.stock.low{color:#c0392b;font-weight:bold}
 .card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #0000000f}
 .cart-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #eee;padding:12px 0}.cart-item:last-child{border-bottom:0}
-.cart-info{flex:1}.cart-name{font-weight:bold}.cart-price{font-size:13px;color:#777;margin-top:3px}
+.cart-info{flex:1;min-width:0}.cart-name{font-weight:bold;display:flex;align-items:center;gap:10px;min-width:0}.cart-name-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cart-thumb{width:48px;height:48px;min-width:48px;border-radius:10px;object-fit:cover;border:1px solid #e9b84b55;background:#191611;box-shadow:0 2px 8px #00000055}.cart-thumb-placeholder{width:48px;height:48px;min-width:48px;border-radius:10px;border:1px solid #e9b84b55;background:#191611;color:#ffd978;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}.cart-price{font-size:13px;color:#777;margin-top:3px}
 .quantity-controls{display:flex;align-items:center;gap:7px;flex-shrink:0}.quantity-controls button{width:38px;height:38px;min-width:38px;border:1px solid #e9b84b55;border-radius:10px;background:#29251e;color:#ffd978;font-size:22px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation}.quantity-controls button:active{transform:scale(.94)}.quantity-remove{width:38px!important;min-width:38px!important;background:#3a1717!important;color:#ff8b8b!important;border-color:#ff555555!important;font-size:18px!important}.quantity{min-width:24px;text-align:center;font-weight:bold;color:#fff}
 .quantity{min-width:22px;text-align:center;font-weight:bold}.total-box{background:#111;color:#fff;border-radius:16px;padding:18px;margin-top:15px}
 .total-row{display:flex;justify-content:space-between;margin-bottom:8px}.total-final{border-top:1px solid #444;padding-top:12px;margin-top:10px;font-size:25px;font-weight:bold}
@@ -1070,8 +1070,8 @@ function getCartUnits(){return cart.reduce((t,i)=>t+i.quantity,0)}
 function renderCart(){
 const c=document.getElementById("cartContainer"),box=document.getElementById("totalBox");
 if(!cart.length){c.innerHTML='<div class="empty">El carrito está vacío.</div>';box.style.display="none";return}
-c.innerHTML=cart.map(i=>{const p=getProduct(i.productId);return `<div class="cart-item">
-<div class="cart-info"><div class="cart-name">${p.icon||"🛒"} ${esc(p.name)}</div><div class="cart-price">${money(p.price)} × ${i.quantity} = ${money(Number(p.price)*i.quantity)}</div></div>
+c.innerHTML=cart.map(i=>{const p=getProduct(i.productId);if(!p)return "";const photo=productHasPhoto(p);const thumb=photo?`<img class="cart-thumb" src="${esc(String(p.icon||""))}" alt="" aria-hidden="true" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:"";return `<div class="cart-item">
+<div class="cart-info"><div class="cart-name">${thumb}<div class="cart-thumb-placeholder" style="${photo?"display:none":""}">${esc(productInitials(p.name))}</div><span class="cart-name-text">${esc(p.name)}</span></div><div class="cart-price">${money(p.price)} × ${i.quantity} = ${money(Number(p.price)*i.quantity)}</div></div>
 <div class="quantity-controls" onclick="event.stopPropagation()">
 <button type="button" aria-label="Disminuir cantidad" onclick="event.stopPropagation();changeCartQuantity('${p.id}',-1)">−</button>
 <div class="quantity">${i.quantity}</div>
