@@ -24,7 +24,7 @@ main{max-width:700px;margin:auto;padding:15px}.screen{display:none}.screen.activ
 .card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #0000000f}
 .cart-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #eee;padding:12px 0}.cart-item:last-child{border-bottom:0}
 .cart-info{flex:1}.cart-name{font-weight:bold}.cart-price{font-size:13px;color:#777;margin-top:3px}
-.quantity-controls{display:flex;align-items:center;gap:7px}.quantity-controls button{width:34px;height:34px;border:0;border-radius:10px;background:#eee;font-size:20px}
+.quantity-controls{display:flex;align-items:center;gap:7px;flex-shrink:0}.quantity-controls button{width:38px;height:38px;min-width:38px;border:1px solid #e9b84b55;border-radius:10px;background:#29251e;color:#ffd978;font-size:22px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation}.quantity-controls button:active{transform:scale(.94)}.quantity-remove{width:38px!important;min-width:38px!important;background:#3a1717!important;color:#ff8b8b!important;border-color:#ff555555!important;font-size:18px!important}.quantity{min-width:24px;text-align:center;font-weight:bold;color:#fff}
 .quantity{min-width:22px;text-align:center;font-weight:bold}.total-box{background:#111;color:#fff;border-radius:16px;padding:18px;margin-top:15px}
 .total-row{display:flex;justify-content:space-between;margin-bottom:8px}.total-final{border-top:1px solid #444;padding-top:12px;margin-top:10px;font-size:25px;font-weight:bold}
 button.primary{width:100%;border:0;border-radius:13px;background:#16803c;color:#fff;padding:15px;font-size:17px;font-weight:bold;cursor:pointer;margin-top:12px}
@@ -927,6 +927,15 @@ let pendingSales=loadData("italy_pending_sales",[]);
 let cart=[];
 let ipvMovementType="entry";
 let ipvDailyReports=loadData("italy_ipv_daily",[]);
+if(!Array.isArray(ipvDailyReports)) ipvDailyReports=[];
+// Copia de seguridad permanente del historial IPV. Nunca se usa para borrar el historial.
+const IPV_HISTORY_BACKUP_KEY="italy_ipv_daily_backup_v13";
+const savedIPVBackup=loadData(IPV_HISTORY_BACKUP_KEY,[]);
+if(!ipvDailyReports.length && Array.isArray(savedIPVBackup) && savedIPVBackup.length){
+  ipvDailyReports=savedIPVBackup;
+  saveData("italy_ipv_daily",ipvDailyReports);
+}
+if(ipvDailyReports.length) saveData(IPV_HISTORY_BACKUP_KEY,ipvDailyReports);
 let ipvMovements=loadData("italy_ipv_movements",[]);
 let capitalInitial=Number(loadData("italy_capital_initial",0))||0;
 let cashMovements=loadData("italy_cash_movements",[]);
@@ -1050,6 +1059,11 @@ if(item.quantity<=0)cart=cart.filter(i=>i.productId!==id);
 if(item.quantity>Number(p.stock))item.quantity=Number(p.stock);
 renderCart()
 }
+function removeFromCart(id){
+cart=cart.filter(i=>i.productId!==id);
+renderCart();
+}
+
 function getCartTotal(){return cart.reduce((t,i)=>{const p=getProduct(i.productId);return t+(p?Number(p.price)*i.quantity:0)},0)}
 function getCartUnits(){return cart.reduce((t,i)=>t+i.quantity,0)}
 
@@ -1058,7 +1072,12 @@ const c=document.getElementById("cartContainer"),box=document.getElementById("to
 if(!cart.length){c.innerHTML='<div class="empty">El carrito está vacío.</div>';box.style.display="none";return}
 c.innerHTML=cart.map(i=>{const p=getProduct(i.productId);return `<div class="cart-item">
 <div class="cart-info"><div class="cart-name">${p.icon||"🛒"} ${esc(p.name)}</div><div class="cart-price">${money(p.price)} × ${i.quantity} = ${money(Number(p.price)*i.quantity)}</div></div>
-<div class="quantity-controls"><button onclick="changeCartQuantity('${p.id}',-1)">−</button><div class="quantity">${i.quantity}</div><button onclick="changeCartQuantity('${p.id}',1)">+</button></div>
+<div class="quantity-controls" onclick="event.stopPropagation()">
+<button type="button" aria-label="Disminuir cantidad" onclick="event.stopPropagation();changeCartQuantity('${p.id}',-1)">−</button>
+<div class="quantity">${i.quantity}</div>
+<button type="button" aria-label="Aumentar cantidad" onclick="event.stopPropagation();changeCartQuantity('${p.id}',1)">+</button>
+<button type="button" class="quantity-remove" aria-label="Eliminar producto del carrito" title="Eliminar" onclick="event.stopPropagation();removeFromCart('${p.id}')">✕</button>
+</div>
 </div>`}).join("");
 document.getElementById("cartUnits").textContent=getCartUnits();
 document.getElementById("cartTotal").textContent=money(getCartTotal());
@@ -1177,6 +1196,49 @@ function formatDateKey(key){
   const parts=key.split("-");
   return parts.length===3?`${parts[2]}/${parts[1]}/${parts[0]}`:key;
 }
+
+/* ===== PROTECCIÓN Y RECUPERACIÓN DEL HISTORIAL IPV =====
+   Los cierres diarios son históricos y no deben depender de la existencia actual.
+   Si una versión anterior los perdió, se reconstruyen desde ventas y movimientos. */
+function rebuildIPVHistoryIfMissing(){
+  if(!Array.isArray(ipvDailyReports)) ipvDailyReports=[];
+  const backup=loadData(IPV_HISTORY_BACKUP_KEY,[]);
+  if(!ipvDailyReports.length && Array.isArray(backup) && backup.length){
+    ipvDailyReports=backup.slice();
+  }
+
+  const dates=new Set(ipvDailyReports.map(r=>r&&r.date).filter(Boolean));
+  (Array.isArray(sales)?sales:[]).forEach(s=>{if(s&&!s.reverted&&s.date)dates.add(localDateKey(s.date))});
+  (Array.isArray(ipvMovements)?ipvMovements:[]).forEach(m=>{if(m&&!m.reverted&&m.date)dates.add(localDateKey(m.date))});
+
+  const ordered=[...dates].sort();
+  for(const dateKey of ordered){
+    if(ipvDailyReports.some(r=>r&&r.date===dateKey)) continue;
+    const salesAll=activeSales();
+    const salesDay=salesAll.filter(s=>localDateKey(s.date)===dateKey);
+    const mov=Array.isArray(ipvMovements)?ipvMovements:[];
+    const movUntil=mov.filter(m=>m&&!m.reverted&&localDateKey(m.date)<=dateKey);
+    const movDay=movUntil.filter(m=>localDateKey(m.date)===dateKey);
+    const rows=products.map(p=>{
+      const initialBase=Math.max(0,num(p.ipvInitialStock));
+      const entriesBefore=movUntil.filter(m=>m.productId===p.id&&m.type==="entry"&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+num(m.quantity),0);
+      const salesBefore=salesAll.filter(s=>localDateKey(s.date)<dateKey).reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>i.productId===p.id).reduce((x,i)=>x+num(i.quantity),0):0),0);
+      const exitsBefore=movUntil.filter(m=>m.productId===p.id&&(m.type==="exit"||m.type==="personal_withdrawal")&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+num(m.quantity),0);
+      const start=Math.max(0,initialBase+entriesBefore-salesBefore-exitsBefore);
+      const entries=movDay.filter(m=>m.productId===p.id&&m.type==="entry").reduce((a,m)=>a+num(m.quantity),0);
+      const salesQty=salesDay.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>i.productId===p.id).reduce((x,i)=>x+num(i.quantity),0):0),0);
+      const exits=movDay.filter(m=>m.productId===p.id&&(m.type==="exit"||m.type==="personal_withdrawal")).reduce((a,m)=>a+num(m.quantity),0);
+      const existence=Math.max(0,start+entries-salesQty-exits);
+      const price=num(p.price);
+      return {productId:p.id,name:p.name,unit:p.unit||"unidad",initial:start,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
+    });
+    const report={date:dateKey,rows,total:rows.reduce((a,r)=>a+r.amount,0),salesCount:salesDay.length,salesTotal:salesDay.reduce((a,s)=>a+num(s.total),0),entries:rows.reduce((a,r)=>a+r.entries,0),otherExits:rows.reduce((a,r)=>a+r.otherExits,0),generatedAt:new Date().toISOString(),reconstructed:true};
+    ipvDailyReports.push(report);
+  }
+  ipvDailyReports.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  saveData("italy_ipv_daily",ipvDailyReports);
+  saveData(IPV_HISTORY_BACKUP_KEY,ipvDailyReports);
+}
 function dailyDataFor(dateKey){
   const salesDay=sales.filter(s=>localDateKey(s.date)===dateKey);
   const movDay=ipvMovements.filter(m=>localDateKey(m.date)===dateKey);
@@ -1251,36 +1313,12 @@ function setStock(id){
   saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);renderInventory();renderSaleProducts()
 }
 
-/* ================================================================
-   GANANCIAS V13 — CORRECCIÓN
-   La ganancia no depende de s.profit guardado.
-   Se recalcula desde cada línea: (precio - costo) × cantidad.
-   Si una venta antigua no tiene líneas, se conserva su profit histórico.
-   ================================================================ */
-function calculateSaleProfitV13(s){
-  if(!s || s.reverted)return 0;
-  const items=Array.isArray(s.items)?s.items:[];
-  if(!items.length)return Number(s.profit||0)||0;
-  return items.reduce((sum,i)=>{
-    const qty=Math.max(0,Number(i.quantity)||0);
-    const price=Number(i.price)||0;
-    let cost=Number(i.cost)||0;
-    // Si la venta sincronizada no trae costo, tomarlo del producto actual.
-    if(cost===0 && i.productId){
-      const p=getProduct(i.productId);
-      if(p)cost=Number(p.cost)||0;
-    }
-    return sum+(price-cost)*qty;
-  },0);
-}
 function getAccumulatedProfit(){
-  return (Array.isArray(sales)?sales:[]).reduce((sum,s)=>sum+calculateSaleProfitV13(s),0);
+  return sales.reduce((sum,s)=>sum+Number(s.profit||0),0);
 }
 function getTodayProfit(){
   const today=localDateKey();
-  return (Array.isArray(sales)?sales:[])
-    .filter(s=>!s.reverted && localDateKey(s.date)===today)
-    .reduce((sum,s)=>sum+calculateSaleProfitV13(s),0);
+  return sales.filter(s=>localDateKey(s.date)===today).reduce((sum,s)=>sum+Number(s.profit||0),0);
 }
 function getCashInBox(){
   // El capital inicial se considera el efectivo inicial de la caja.
@@ -1373,6 +1411,7 @@ products=products.filter(x=>x.id!==id);cart=cart.filter(x=>x.productId!==id);
 saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();renderInventory();renderCart()
 }
 
+rebuildIPVHistoryIfMissing();
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=13").catch(e=>console.error(e)));}</script>
@@ -1669,8 +1708,11 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 
   /* ---------- Puesta a cero / herramientas antiguas ---------- */
   function clearLocalOperationalData(){
-    cart=[];sales=[];pendingSales=[];ipvMovements=[];ipvDailyReports=[];cashMovements=[];capitalInitial=0;capitalInjections=[];capitalWithdrawals=[];deteriorationExits=[];
-    ["italy_sales","italy_pending_sales","italy_ipv_movements","italy_ipv_daily","italy_cash_movements","italy_capital_initial","italy_capital_injections","italy_capital_withdrawals","italy_deterioration_exits"].forEach(k=>localStorage.removeItem(k));
+    // El historial IPV es permanente: no se borra al limpiar datos operativos.
+    saveData("italy_ipv_daily",Array.isArray(ipvDailyReports)?ipvDailyReports:[]);
+    saveData(IPV_HISTORY_BACKUP_KEY,Array.isArray(ipvDailyReports)?ipvDailyReports:[]);
+    cart=[];sales=[];pendingSales=[];ipvMovements=[];cashMovements=[];capitalInitial=0;capitalInjections=[];capitalWithdrawals=[];deteriorationExits=[];
+    ["italy_sales","italy_pending_sales","italy_ipv_movements","italy_cash_movements","italy_capital_initial","italy_capital_injections","italy_capital_withdrawals","italy_deterioration_exits"].forEach(k=>localStorage.removeItem(k));
   }
   window.initialStoreSetupAdmin=function(){
     if(role!=="admin")return alert("Solo el administrador puede preparar la tienda.");
