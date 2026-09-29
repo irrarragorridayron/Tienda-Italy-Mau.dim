@@ -1714,10 +1714,30 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     cart=[];sales=[];pendingSales=[];ipvMovements=[];cashMovements=[];capitalInitial=0;capitalInjections=[];capitalWithdrawals=[];deteriorationExits=[];
     ["italy_sales","italy_pending_sales","italy_ipv_movements","italy_cash_movements","italy_capital_initial","italy_capital_injections","italy_capital_withdrawals","italy_deterioration_exits"].forEach(k=>localStorage.removeItem(k));
   }
-  window.initialStoreSetupAdmin=function(){
+  async function resetCloudStoreFromAdmin(){
+    if(role!=="admin"||!navigator.onLine)return false;
+    try{
+      // Puesta a cero real: borra el catálogo compartido y todas las ventas
+      // enviadas por vendedores. store_users se conserva para no romper los roles.
+      await cloudRequest('/rest/v1/seller_sales?id=neq.null',{method:'DELETE',headers:{Prefer:'return=minimal'}});
+      await cloudRequest('/rest/v1/products?id=neq.null',{method:'DELETE',headers:{Prefer:'return=minimal'}});
+      return true;
+    }catch(e){console.warn("No se pudo limpiar la tienda compartida",e);return false}
+  }
+
+  window.initialStoreSetupAdmin=async function(){
     if(role!=="admin")return alert("Solo el administrador puede preparar la tienda.");
-    if(!confirm("Se eliminarán ventas, movimientos IPV, caja y capital de este teléfono. Los productos se conservarán. ¿Continuar?"))return;
-    clearLocalOperationalData();renderAllClean();alert("La operación local fue limpiada. Los productos se conservaron.");
+    if(!confirm("⚠️ PUESTA A CERO TOTAL\n\nSe eliminarán del administrador Y de la sincronización compartida:\n• productos\n• ventas del vendedor\n• ventas locales\n• movimientos IPV\n• capital y movimientos de caja\n\nLos usuarios/roles se conservarán.\n\n¿Continuar?"))return;
+    if(!navigator.onLine)return alert("Para hacer una puesta a cero sincronizada debes tener Internet. Así podremos borrar también los datos compartidos del vendedor.");
+    const cloudOk=await resetCloudStoreFromAdmin();
+    if(!cloudOk)return alert("No se pudo completar la puesta a cero en la nube. No se borraron los datos locales para evitar que queden desincronizados.");
+
+    clearLocalOperationalData();
+    products=[];
+    cart=[];
+    saveData("italy_products",products);
+    renderAllClean();
+    alert("Puesta a cero completada. El administrador y la sincronización del vendedor quedaron sin productos ni ventas anteriores.");
   };
   window.prepareInitialDevice=function(){
     if(!confirm("Se limpiarán ventas, movimientos, capital y colas antiguas de este teléfono. Los productos se conservarán. ¿Continuar?"))return;
@@ -1799,7 +1819,26 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     if(role!=="seller"||!navigator.onLine)return false;
     try{
       const rows=await cloudRequest('/rest/v1/products?select=*&order=created_at.asc');
-      if(!Array.isArray(rows)||!rows.length)return false;
+      if(!Array.isArray(rows))return false;
+
+      // Si el administrador hizo una puesta a cero y el catálogo remoto quedó vacío,
+      // el vendedor también debe quedar completamente limpio. No conservamos productos
+      // ni ventas/colas antiguas de una sesión anterior.
+      if(rows.length===0){
+        products=[];
+        cart=[];
+        sales=[];
+        pendingSales=[];
+        saveData("italy_products",products);
+        saveData("italy_sales",sales);
+        saveData("italy_pending_sales",pendingSales);
+        saveQueue([]);
+        renderSaleProducts();
+        renderCart();
+        renderSellerSummary();
+        return true;
+      }
+
       products=rows.map(p=>({id:p.id,name:p.name,price:num(p.price),cost:num(p.cost),stock:Math.max(0,Math.floor(num(p.stock))),unit:p.unit||"unidad",icon:p.icon||"",ipvInitialStock:num(p.ipv_initial_stock),ipvEntries:num(p.ipv_entries),ipvSales:num(p.ipv_sales),ipvOtherExits:num(p.ipv_other_exits)}));
       ensureIPVDataClean();saveData("italy_products",products);renderSaleProducts();renderCart();return true;
     }catch(e){console.warn("No se pudo actualizar el catálogo del vendedor",e);return false}
@@ -1842,8 +1881,24 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     if(role!=="admin"||!navigator.onLine)return false;
     try{
       const payload=(Array.isArray(products)?products:[]).map(p=>({id:p.id,name:p.name,price:num(p.price),cost:num(p.cost),stock:Math.max(0,Math.floor(num(p.stock))),unit:p.unit||"unidad",icon:p.icon||"",ipv_initial_stock:num(p.ipvInitialStock),ipv_entries:num(p.ipvEntries),ipv_sales:num(p.ipvSales),ipv_other_exits:num(p.ipvOtherExits)}));
-      if(!payload.length)return true;
+
+      // El catálogo remoto debe reflejar exactamente al administrador.
+      // Si el administrador no tiene productos, también se vacía Supabase.
+      if(!payload.length){
+        await cloudRequest('/rest/v1/products?id=neq.null',{method:'DELETE',headers:{Prefer:'return=minimal'}});
+        return true;
+      }
+
       await cloudRequest('/rest/v1/products?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(payload)});
+
+      // Elimina del catálogo remoto productos que ya no existen localmente.
+      const remote=await cloudRequest('/rest/v1/products?select=id');
+      if(Array.isArray(remote)){
+        const keep=new Set(payload.map(p=>String(p.id)));
+        for(const rp of remote){
+          if(!keep.has(String(rp.id)))await cloudRequest(`/rest/v1/products?id=eq.${encodeURIComponent(rp.id)}`,{method:'DELETE',headers:{Prefer:'return=minimal'}});
+        }
+      }
       return true;
     }catch(e){console.warn("No se pudo publicar el inventario del administrador",e);return false}
   }
