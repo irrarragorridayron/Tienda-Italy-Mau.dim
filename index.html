@@ -2094,6 +2094,68 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   function ensureAdminToolsVisibility(){
     const card=document.getElementById("adminToolsCard");
     if(card)card.style.display=role==="admin"?"block":"none";
+    ensureInventoryAuditTool();
+  }
+
+  /* ---------- Auditoría de inventario: SOLO LECTURA ----------
+     No modifica productos, ventas, movimientos, IPV ni caja.
+     Compara el cierre IPV del 27/09/2026 con los movimientos posteriores. */
+  function auditInventoryFromDate(startKey="2026-09-27"){
+    const reports=Array.isArray(ipvDailyReports)?ipvDailyReports:[];
+    const baseline=reports.find(r=>String(r?.date)===startKey);
+    const current=Array.isArray(products)?products:[];
+    const moves=Array.isArray(ipvMovements)?ipvMovements.filter(m=>m&&!m.reverted):[];
+    const salesAll=Array.isArray(sales)?sales.filter(s=>s&&!s.reverted):[];
+    const keyOf=(name,unit)=>normalizeProductName(name)+"||"+normalizeProductName(unit||"unidad");
+    const currentGroups=new Map();
+    current.forEach(p=>{
+      const k=keyOf(p.name,p.unit);if(!currentGroups.has(k))currentGroups.set(k,[]);currentGroups.get(k).push(p);
+    });
+    const baseRows=Array.isArray(baseline?.rows)?baseline.rows:[];
+    const baseMap=new Map();
+    baseRows.forEach(r=>{baseMap.set(keyOf(r.name,r.unit),r)});
+    const keys=new Set([...baseMap.keys(),...currentGroups.keys()]);
+    const rows=[];
+    for(const k of keys){
+      const b=baseMap.get(k), ps=currentGroups.get(k)||[];
+      const ids=new Set(ps.map(p=>String(p.id)));
+      const postMoves=moves.filter(m=>localDateKey(m.date)>startKey&&ids.has(String(m.productId)));
+      const postSales=salesAll.filter(s=>localDateKey(s.date)>startKey).reduce((sum,s)=>sum+(Array.isArray(s.items)?s.items.filter(i=>ids.has(String(i.productId))).reduce((a,i)=>a+num(i.quantity),0):0),0);
+      const postEntries=postMoves.filter(m=>m.type==="entry").reduce((a,m)=>a+num(m.quantity),0);
+      const postExits=postMoves.filter(m=>m.type==="exit"||m.type==="personal_withdrawal").reduce((a,m)=>a+num(m.quantity),0);
+      const baselineQty=b?num(b.existence):0;
+      const expected=b?Math.max(0,Math.floor(baselineQty+postEntries-postSales-postExits)):null;
+      const actual=ps.reduce((a,p)=>a+Math.max(0,Math.floor(num(p.stock))),0);
+      const duplicateIds=ps.length>1;
+      const missing=!!b&&ps.length===0;
+      const unexpected=ps.length>0&&!b;
+      const discrepancy=expected!==null&&actual!==expected;
+      if(duplicateIds||missing||unexpected||discrepancy){
+        rows.push({name:b?.name||ps[0]?.name||"Producto",unit:b?.unit||ps[0]?.unit||"unidad",ids:ps.map(p=>String(p.id)),count:ps.length,baseline:baselineQty,entries:postEntries,sales:postSales,exits:postExits,expected,actual,difference:expected===null?null:actual-expected,duplicateIds,missing,unexpected,discrepancy});
+      }
+    }
+    rows.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+    return {startKey,hasBaseline:!!baseline,baselineDate:baseline?.date||null,productsCurrent:current.length,duplicateGroups:[...currentGroups.entries()].filter(([,v])=>v.length>1).map(([k,v])=>({key:k,ids:v.map(p=>p.id),name:v[0].name,unit:v[0].unit,count:v.length,stock:v.reduce((a,p)=>a+num(p.stock),0)})),rows};
+  }
+
+  function renderInventoryAudit(result){
+    const box=document.getElementById("inventoryAuditResults");if(!box)return;
+    if(!result.hasBaseline){box.innerHTML=`<div class="hint">⚠️ No existe un cierre IPV guardado del ${formatDateKey(result.startKey)}. La auditoría no inventará una base; primero hay que recuperar ese cierre.</div>`;return}
+    if(!result.rows.length){box.innerHTML=`<div class="hint">✅ No se encontraron diferencias entre el cierre del ${formatDateKey(result.startKey)} y el inventario actual según los movimientos registrados.</div>`;return}
+    const tr=result.rows.map(r=>{
+      const flags=[r.duplicateIds?"DUPLICADO":"",r.missing?"DESAPARECIÓ":"",r.unexpected?"NUEVO":"",r.discrepancy?"DIFERENCIA":""].filter(Boolean).join(" · ");
+      return `<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${flags}</td><td>${r.baseline}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.exits}</td><td>${r.expected===null?"—":r.expected}</td><td><strong>${r.actual}</strong></td><td>${r.difference===null?"—":r.difference>0?"+"+r.difference:r.difference}</td></tr>`;
+    }).join("");
+    box.innerHTML=`<div class="hint"><strong>Auditoría desde ${formatDateKey(result.startKey)}</strong><br>Productos actuales: ${result.productsCurrent} · Grupos duplicados: ${result.duplicateGroups.length} · Incidencias: ${result.rows.length}<br><small>Esta auditoría es de solo lectura y no corrige ni guarda ningún dato.</small></div><div class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Incidencia</th><th>IPV 27</th><th>Entradas</th><th>Ventas</th><th>Salidas</th><th>Esperado</th><th>Actual</th><th>Dif.</th></tr></thead><tbody>${tr}</tbody></table></div>`;
+  }
+
+  function ensureInventoryAuditTool(){
+    if(role!=="admin"||document.getElementById("inventoryAuditCard"))return;
+    const anchor=document.getElementById("adminToolsCard")||document.querySelector("main");if(!anchor)return;
+    const card=document.createElement("div");card.id="inventoryAuditCard";card.className="card";card.style.marginTop="12px";
+    card.innerHTML=`<h3 style="margin-top:0">🔎 Auditoría del inventario</h3><p class="subtitle">Comprobar qué cambió desde el IPV del 27/09/2026 sin modificar los datos.</p><button type="button" class="secondary" id="runInventoryAuditBtn" style="width:100%">🔎 Auditar inventario desde el día 27</button><div id="inventoryAuditResults" style="margin-top:10px"></div>`;
+    anchor.parentNode?.insertBefore(card,anchor.nextSibling);
+    document.getElementById("runInventoryAuditBtn")?.addEventListener("click",()=>renderInventoryAudit(auditInventoryFromDate("2026-09-27")));
   }
 
   /* ---------- Navegación protegida ---------- */
