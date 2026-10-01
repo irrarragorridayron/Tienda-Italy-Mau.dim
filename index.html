@@ -950,6 +950,37 @@ if(!Array.isArray(cashMovements)) cashMovements=[];
 
 if(!products){products=DEFAULT_PRODUCTS;saveData("italy_products",products)}
 
+function normalizeProductKey(p){
+  return `${String(p?.name||"").trim().toLocaleLowerCase()}||${String(p?.unit||"unidad").trim().toLocaleLowerCase()}`;
+}
+function normalizeDuplicateProducts(){
+  if(!Array.isArray(products)||products.length<2)return false;
+  const groups=new Map();
+  products.forEach(p=>{const key=normalizeProductKey(p);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p)});
+  const idMap=new Map(), cleaned=[]; let changed=false;
+  for(const group of groups.values()){
+    if(group.length===1){cleaned.push(group[0]);continue}
+    changed=true;
+    const canonical=[...group].sort((a,b)=>(Number(b.stock)||0)-(Number(a.stock)||0))[0];
+    const photo=group.find(p=>productHasPhoto(p))?.icon;if(photo)canonical.icon=photo;
+    canonical.stock=Math.max(...group.map(p=>Number(p.stock)||0));
+    canonical.ipvInitialStock=Math.max(...group.map(p=>Number(p.ipvInitialStock)||0));
+    canonical.ipvEntries=Math.max(...group.map(p=>Number(p.ipvEntries)||0));
+    canonical.ipvSales=Math.max(...group.map(p=>Number(p.ipvSales)||0));
+    canonical.ipvOtherExits=Math.max(...group.map(p=>Number(p.ipvOtherExits)||0));
+    group.forEach(p=>{if(String(p.id)!==String(canonical.id))idMap.set(String(p.id),String(canonical.id))});
+    cleaned.push(canonical);
+  }
+  if(!changed)return false;
+  const remapItems=list=>(Array.isArray(list)?list:[]).map(x=>{if(!x||typeof x!=="object")return x;const y={...x};if(y.productId!=null&&idMap.has(String(y.productId)))y.productId=idMap.get(String(y.productId));return y});
+  sales=(Array.isArray(sales)?sales:[]).map(s=>({...s,items:remapItems(s.items)}));
+  pendingSales=(Array.isArray(pendingSales)?pendingSales:[]).map(s=>({...s,items:remapItems(s.items)}));
+  ipvMovements=(Array.isArray(ipvMovements)?ipvMovements:[]).map(m=>({...m,productId:idMap.get(String(m.productId))||m.productId}));
+  cart=remapItems(cart); products=cleaned;
+  saveData("italy_products",products);saveData("italy_sales",sales);saveData("italy_pending_sales",pendingSales);saveData("italy_ipv_movements",ipvMovements);
+  return true;
+}
+
 function ensureIPVData(){
   products.forEach(p=>{
     const stock=Number(p.stock)||0;
@@ -1454,7 +1485,7 @@ if(!Number.isFinite(price)||price<0){alert("Introduce un precio válido.");retur
 if(!Number.isFinite(cost)||cost<0){alert("Introduce un costo válido o déjalo vacío.");return}
 if(!Number.isFinite(stock)||stock<0){alert("Introduce una cantidad válida.");return}
 if(id){const p=getProduct(id);p.name=name;p.price=price;p.cost=cost;p.stock=Math.floor(stock);p.unit=unit;if(pendingProductPhoto)p.icon=pendingProductPhoto}
-else products.push({id:generateId(),name,price,cost,stock:Math.floor(stock),unit,icon:pendingProductPhoto||"",ipvInitialStock:Math.floor(stock),ipvEntries:0,ipvSales:0,ipvOtherExits:0});
+else { const existing=products.find(p=>normalizeProductKey(p)===`${name.toLocaleLowerCase()}||${unit.toLocaleLowerCase()}`); if(existing){ existing.price=price;existing.cost=cost;existing.stock=Math.floor(stock);if(pendingProductPhoto)existing.icon=pendingProductPhoto; } else products.push({id:generateId(),name,price,cost,stock:Math.floor(stock),unit,icon:pendingProductPhoto||"",ipvInitialStock:Math.floor(stock),ipvEntries:0,ipvSales:0,ipvOtherExits:0}); }
 saveData("italy_products",products);closeProductModal();renderProductsAdmin();renderSaleProducts();renderInventory()
 }
 function deleteProduct(id){
@@ -1827,7 +1858,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     const price=num(document.getElementById("productPrice")?.value),cost=num(document.getElementById("productCost")?.value),stock=Math.floor(num(document.getElementById("productStock")?.value)),unit=document.getElementById("productUnit")?.value||"unidad";
     if(!name||price<0||cost<0||stock<0){alert("Revisa los datos del producto.");return}
     if(id){const p=getProduct(id);if(!p)return;p.name=name;p.price=price;p.cost=cost;p.stock=stock;p.unit=unit;if(typeof pendingProductPhoto!=="undefined"&&pendingProductPhoto)p.icon=pendingProductPhoto}
-    else products.push({id:generateUUID(),name,price,cost,stock,unit,icon:(typeof pendingProductPhoto!=="undefined"?pendingProductPhoto:"")||"",ipvInitialStock:stock,ipvEntries:0,ipvSales:0,ipvOtherExits:0});
+    else { const existing=products.find(p=>normalizeProductKey(p)===`${name.toLocaleLowerCase()}||${unit.toLocaleLowerCase()}`); if(existing){ existing.price=price;existing.cost=cost;existing.stock=stock;if(typeof pendingProductPhoto!=="undefined"&&pendingProductPhoto)existing.icon=pendingProductPhoto; } else products.push({id:generateUUID(),name,price,cost,stock,unit,icon:(typeof pendingProductPhoto!=="undefined"?pendingProductPhoto:"")||"",ipvInitialStock:stock,ipvEntries:0,ipvSales:0,ipvOtherExits:0}); }
     saveData("italy_products",products);if(typeof resetProductPhotoUI==="function")resetProductPhotoUI("");closeProductModal();renderAllClean();
     if(role==="admin"&&navigator.onLine)syncAdminProducts();
   };
