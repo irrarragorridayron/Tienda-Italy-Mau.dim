@@ -1519,7 +1519,10 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   const DEVICE_KEY="italy_device_clean_v1";
   const APPLIED_SELLER_KEY="italy_applied_seller_sales_v1";
   const SALE_QUEUE_KEY="italy_seller_sale_queue_v1";
-  let role=localStorage.getItem(ROLE_KEY)||"";
+  // MODO TEMPORAL DE TRABAJO: solo Administrador.
+  // El código del vendedor se conserva intacto para reactivarlo más adelante.
+  let role="admin";
+  localStorage.setItem(ROLE_KEY,"admin");
   let deviceId=localStorage.getItem(DEVICE_KEY);
   let syncBusy=false;
   let syncTimer=null;
@@ -1875,11 +1878,27 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     o=document.createElement("div");o.id="roleOverlayClean";o.innerHTML=`<div class="role-box-v8"><div class="role-crown-v8">👑</div><h2>Italy Mau.dim</h2><p>Selecciona el modo de trabajo</p><button class="role-btn-v8 admin" onclick="selectRoleClean('admin')">👑 Administrador</button><button class="role-btn-v8 seller" onclick="selectRoleClean('seller')">🧑‍💼 Vendedor</button><div class="role-note-v8">No se requiere contraseña. El vendedor puede trabajar sin Internet; la conexión solo se usa para sincronizar.</div></div>`;document.body.appendChild(o);
   }
   function ensureRoleBar(){
-    let b=document.getElementById("roleBarClean");if(!b){b=document.createElement("div");b.id="roleBarClean";document.body.appendChild(b)}
-    b.innerHTML=`<span>${role==="admin"?"👑 Administrador":"🧑‍💼 Vendedor"}</span><button onclick="switchRoleClean()">Cambiar</button>`;
+    let b=document.getElementById("roleBarClean");
+    if(!b){b=document.createElement("div");b.id="roleBarClean";document.body.appendChild(b)}
+    // Durante esta etapa no existe cambio de modo: Administración es el único modo activo.
+    b.innerHTML=`<span>👑 Administrador</span>`;
   }
-  window.selectRoleClean=function(r){role=r==="admin"?"admin":"seller";localStorage.setItem(ROLE_KEY,role);document.getElementById("roleOverlayClean")?.remove();configureNavigation();renderAllClean();syncNow();};
-  window.switchRoleClean=function(){if(!confirm("¿Cambiar de modo en este teléfono?"))return;localStorage.removeItem(ROLE_KEY);role="";document.getElementById("roleBarClean")?.remove();ensureRoleUI()};
+  window.selectRoleClean=function(r){
+    // Bloqueado temporalmente: cualquier selección queda en Administrador.
+    role="admin";
+    localStorage.setItem(ROLE_KEY,"admin");
+    document.getElementById("roleOverlayClean")?.remove();
+    configureNavigation();
+    renderAllClean();
+    syncNow();
+  };
+  window.switchRoleClean=function(){
+    // No se permite cambiar de modo mientras se corrigen los módulos administrativos.
+    role="admin";
+    localStorage.setItem(ROLE_KEY,"admin");
+    document.getElementById("roleOverlayClean")?.remove();
+    configureNavigation();
+  };
   function configureNavigation(){
     ensureSellerScreen();ensureRoleBar();
     const nav=[...document.querySelectorAll(".bottom-nav .nav-btn")];
@@ -2021,19 +2040,12 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   }
   let lastSyncOk=true;
   async function syncNow(){
+    // Durante la etapa de reparación solo se ejecuta la sincronización administrativa.
+    if(role!=="admin")return false;
     if(syncBusy)return lastSyncOk;syncBusy=true;let ok=true;
     try{
-      if(role==="seller"){
-        const catalogOk=await syncSellerCatalog();
-        if(navigator.onLine&&!catalogOk)ok=false;
-        const before=queueSales().length;await syncSellerQueue();
-        if(navigator.onLine&&before>queueSales().length){}
-        if(navigator.onLine&&queueSales().length)ok=false;
-      }else if(role==="admin"){
-        try{await pullSellerSalesToAdmin()}catch(e){ok=false}
-        const productsOk=await syncAdminProducts();
-        if(navigator.onLine&&!productsOk)ok=false;
-      }
+      const productsOk=await syncAdminProducts();
+      if(navigator.onLine&&!productsOk)ok=false;
       lastSyncOk=ok;
     }finally{syncBusy=false;updateSyncStatus()}
     return lastSyncOk;
@@ -2093,14 +2105,20 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     if(name==="sales")renderSales();
   };
 
-  /* ---------- Inicio ---------- */
+  /* ---------- Inicio: SOLO ADMINISTRADOR ---------- */
+  role="admin";
+  localStorage.setItem(ROLE_KEY,"admin");
+  document.getElementById("roleOverlayClean")?.remove();
   cleanDuplicateProducts();
   repairStockFromHistory();
   saveData("italy_products",products);
-  ensureSellerScreen();
+  // No se activa la pantalla ni la navegación del vendedor.
   ensureSaleNumbers();
   ensureCloudImportButton();
-  if(!role){ensureRoleUI();ensureAdminToolsVisibility();updateHomeDashboardClean()}else{configureNavigation();renderAllClean();if(navigator.onLine)syncNow()}
+  ensureRoleBar();
+  configureNavigation();
+  renderAllClean();
+  if(navigator.onLine)syncNow();
   window.addEventListener("online",()=>{clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,500);});
   window.addEventListener("offline",updateSyncStatus);
   setInterval(()=>{if(navigator.onLine&&role)syncNow()},15000);
