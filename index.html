@@ -731,7 +731,7 @@ main{max-width:1120px}
   <div class="dashboard-footer-note">Italy Mau.dim · TIENDA · Todo lo que necesitas, en un solo lugar</div>
 </section>
 
-<section id="screen-sale" class="screen active">
+<section id="screen-sale" class="screen">
 <h2 class="section-title">Nueva venta</h2>
 <p class="subtitle">Toca un producto para añadirlo al carrito.</p>
 <div id="saleProducts" class="products-grid"></div>
@@ -1240,16 +1240,23 @@ function rebuildIPVHistoryIfMissing(){
   saveData(IPV_HISTORY_BACKUP_KEY,ipvDailyReports);
 }
 function dailyDataFor(dateKey){
-  const salesDay=sales.filter(s=>localDateKey(s.date)===dateKey);
-  const movDay=ipvMovements.filter(m=>localDateKey(m.date)===dateKey);
+  const allSales=(Array.isArray(sales)?sales:[]).filter(s=>s&&!s.reverted);
+  const salesDay=allSales.filter(s=>localDateKey(s.date)===dateKey);
+  const allMov=(Array.isArray(ipvMovements)?ipvMovements:[]).filter(m=>m&&!m.reverted);
+  const movDay=allMov.filter(m=>localDateKey(m.date)===dateKey);
   const rows=products.map(p=>{
-    const salesQty=salesDay.reduce((sum,s)=>sum+s.items.filter(i=>i.productId===p.id).reduce((a,i)=>a+Number(i.quantity||0),0),0);
-    const entries=movDay.filter(m=>m.productId===p.id&&m.type==="entry").reduce((a,m)=>a+Number(m.quantity||0),0);
-    const exits=movDay.filter(m=>m.productId===p.id&&(m.type==="exit"||m.type==="personal_withdrawal")).reduce((a,m)=>a+Number(m.quantity||0),0);
-    const existence=Number(p.stock)||0;
-    const initial=existence-entries+salesQty+exits;
+    const pid=String(p.id);
+    const entriesBefore=allMov.filter(m=>String(m.productId)===pid&&m.type==='entry'&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+Number(m.quantity||0),0);
+    const salesBefore=allSales.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>String(i.productId)===pid&&localDateKey(s.date)<dateKey).reduce((x,i)=>x+Number(i.quantity||0),0):0),0);
+    const exitsBefore=allMov.filter(m=>String(m.productId)===pid&&(m.type==='exit'||m.type==='personal_withdrawal')&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+Number(m.quantity||0),0);
+    const initialBase=Math.max(0,Number(p.ipvInitialStock)||0);
+    const opening=Math.max(0,initialBase+entriesBefore-salesBefore-exitsBefore);
+    const entries=movDay.filter(m=>String(m.productId)===pid&&m.type==='entry').reduce((a,m)=>a+Number(m.quantity||0),0);
+    const salesQty=salesDay.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>String(i.productId)===pid).reduce((x,i)=>x+Number(i.quantity||0),0):0),0);
+    const exits=movDay.filter(m=>String(m.productId)===pid&&(m.type==='exit'||m.type==='personal_withdrawal')).reduce((a,m)=>a+Number(m.quantity||0),0);
+    const existence=Math.max(0,opening+entries-salesQty-exits);
     const price=Number(p.price)||0;
-    return {productId:p.id,name:p.name,unit:p.unit||"unidad",initial,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
+    return {productId:p.id,name:p.name,unit:p.unit||'unidad',initial:opening,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
   });
   return {date:dateKey,rows,total:rows.reduce((a,r)=>a+r.amount,0),salesCount:salesDay.length,salesTotal:salesDay.reduce((a,s)=>a+Number(s.total||0),0),entries:rows.reduce((a,r)=>a+r.entries,0),otherExits:rows.reduce((a,r)=>a+r.otherExits,0)};
 }
@@ -1514,18 +1521,28 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 
   /* ---------- Capital: fórmula original conservada ---------- */
   function currentCapital(){
+    // Fórmula contable definida para la tienda:
+    // capital actual = capital inicial + ventas + inyección de capital
+    //                  - retiro de efectivo del capital
+    //                  - salidas por deterioro/mal estado
+    //                  - retiros personales de mercancía al costo
+    const salesTotal=activeSales().reduce((a,s)=>a+totalSale(s),0);
     const injections=(Array.isArray(capitalInjections)?capitalInjections:[]).reduce((a,m)=>a+num(m.amount),0);
     const withdrawals=(Array.isArray(capitalWithdrawals)?capitalWithdrawals:[]).reduce((a,m)=>a+num(m.amount),0);
     const deterioration=(Array.isArray(deteriorationExits)?deteriorationExits:[]).reduce((a,m)=>a+num(m.amount),0);
-    return num(capitalInitial)+getAccumulatedProfit()+injections-withdrawals-deterioration;
+    const personal=(Array.isArray(ipvMovements)?ipvMovements:[])
+      .filter(m=>m&&m.type==='personal_withdrawal'&&!m.reverted)
+      .reduce((a,m)=>a+num(m.cashAmount||num(m.unitCost)*num(m.quantity)),0);
+    return num(capitalInitial)+salesTotal+injections-withdrawals-deterioration-personal;
   }
   function inventoryCost(){
     return (Array.isArray(products)?products:[]).reduce((sum,p)=>sum+Math.max(0,num(p.stock))*Math.max(0,num(p.cost)),0);
   }
   window.getCashInBox=function(){
     // Regla definitiva: efectivo en caja = capital actual - inventario al costo.
-    // Se evita mostrar un valor negativo cuando los datos históricos están temporalmente desbalanceados.
-    return Math.max(0,currentCapital()-inventoryCost());
+    // No se falsea el resultado con Math.max(): si aparece negativo, los datos
+    // realmente están desbalanceados y debe poder detectarse y corregirse.
+    return currentCapital()-inventoryCost();
   };
 
   /* ---------- Render de productos: una sola tarjeta por ID ---------- */
@@ -1690,17 +1707,29 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     const p=getProduct(document.getElementById("ipvMovementProduct")?.value),q=Math.floor(num(document.getElementById("ipvMovementQuantity")?.value));
     if(!p){alert("Selecciona un producto.");return}if(q<=0){alert("Introduce una cantidad válida.");return}
     if(ipvMovementType==="exit"&&q>num(p.stock)){alert("La salida no puede ser mayor que la existencia.");return}
+    const now=new Date().toISOString();
     if(ipvMovementType==="entry"){
-      p.stock+=q;p.ipvEntries=num(p.ipvEntries)+q;
       const cashType=document.getElementById("cleanEntryType")?.value||"purchase";
-      if(cashType==="purchase"){const amount=num(p.cost)*q;if(amount<=0){alert("Define el costo del producto antes de registrar una compra pagada en efectivo.");return}cashMovements.unshift({id:generateId(),date:new Date().toISOString(),type:"purchase",productId:p.id,quantity:q,unitCost:num(p.cost),amount});saveData("italy_cash_movements",cashMovements)}
+      const amount=num(p.cost)*q;
+      if(cashType==="purchase"&&amount<=0){alert("Define el costo del producto antes de registrar una compra pagada en efectivo.");return}
+      p.stock+=q;p.ipvEntries=num(p.ipvEntries)+q;
+      if(cashType==="purchase"){
+        cashMovements.unshift({id:generateId(),date:now,type:"purchase",productId:p.id,quantity:q,unitCost:num(p.cost),amount});
+        saveData("italy_cash_movements",cashMovements);
+      }
+      ipvMovements.unshift({id:generateId(),date:now,type:"entry",productId:p.id,quantity:q,unitCost:num(p.cost),cashAmount:cashType==="purchase"?amount:0});
     }else{
       const reason=document.getElementById("cleanExitReason")?.value||"other";
       const personal=reason==="personal";
-      const amount=personal?num(p.cost)*q:0;
-      if(personal&&amount<=0){alert("Define el costo del producto para registrar un retiro personal.");return}
+      const loss=reason==="loss";
+      const amount=(personal||loss)?num(p.cost)*q:0;
+      if((personal||loss)&&amount<=0){alert("Define el costo del producto para registrar esta salida.");return}
       p.stock-=q;p.ipvOtherExits=num(p.ipvOtherExits)+q;
-      ipvMovements.unshift({id:generateId(),date:new Date().toISOString(),type:personal?"personal_withdrawal":"exit",reason,productId:p.id,quantity:q,unitCost:personal?num(p.cost):0,cashAmount:amount});
+      ipvMovements.unshift({id:generateId(),date:now,type:personal?"personal_withdrawal":"exit",reason,productId:p.id,quantity:q,unitCost:(personal||loss)?num(p.cost):0,cashAmount:amount});
+      if(loss){
+        deteriorationExits.unshift({id:generateId(),date:now,amount,note:`Deterioro de ${p.name} × ${q}`,productId:p.id,quantity:q});
+        saveData("italy_deterioration_exits",deteriorationExits);
+      }
     }
     saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);closeIPVMovementModal();renderAllClean();
     if(role==="admin"&&navigator.onLine)syncAdminProducts();
@@ -1840,6 +1869,17 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
       }
 
       products=rows.map(p=>({id:p.id,name:p.name,price:num(p.price),cost:num(p.cost),stock:Math.max(0,Math.floor(num(p.stock))),unit:p.unit||"unidad",icon:p.icon||"",ipvInitialStock:num(p.ipv_initial_stock),ipvEntries:num(p.ipv_entries),ipvSales:num(p.ipv_sales),ipvOtherExits:num(p.ipv_other_exits)}));
+
+      // Nunca sobrescribimos el efecto de ventas locales que todavía están
+      // pendientes de subir. El catálogo remoto es la base y la cola local
+      // se vuelve a aplicar encima de ella.
+      const pending=queueSales();
+      for(const q of pending){
+        for(const item of (q.items||[])){
+          const lp=products.find(p=>String(p.id)===String(item.productId||item.product_id));
+          if(lp) lp.stock=Math.max(0,Math.floor(num(lp.stock)-num(item.quantity)));
+        }
+      }
       ensureIPVDataClean();saveData("italy_products",products);renderSaleProducts();renderCart();return true;
     }catch(e){console.warn("No se pudo actualizar el catálogo del vendedor",e);return false}
   }
@@ -1935,7 +1975,36 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 
   function renderAllClean(){
     ensureIPVDataClean();saveData("italy_products",products);
-    renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderCapital();renderSellerSummary();updateSyncStatus();
+    renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderCapital();renderSellerSummary();updateHomeDashboardClean();ensureAdminToolsVisibility();ensureCloudImportButton();updateSyncStatus();
+  }
+
+  function updateHomeDashboardClean(){
+    const today=localDateKey();
+    const todaySales=activeSales().filter(s=>localDateKey(s.date)===today);
+    const set=(id,value)=>{const e=document.getElementById(id);if(e)e.textContent=value};
+    set("homeSalesCount",String(todaySales.length));
+    set("homeSalesTotal",money(todaySales.reduce((a,s)=>a+totalSale(s),0)));
+    set("homeProfit",money(getTodayProfit()));
+    set("homeCash",money(getCashInBox()));
+  }
+
+  function ensureCloudImportButton(){
+    if(document.getElementById("importCloudBtn"))return;
+    const b=document.createElement("button");
+    b.id="importCloudBtn";
+    b.type="button";
+    b.style.display="none";
+    b.addEventListener("click",()=>{
+      if(role!=="admin"){alert("Solo el administrador puede importar/sincronizar la tienda.");return}
+      if(!navigator.onLine){alert("No hay Internet. Los datos locales siguen disponibles y se sincronizarán al volver la conexión.");return}
+      syncNow().then(ok=>alert(ok?"Sincronización completada correctamente.":"La sincronización quedó pendiente; revisa la conexión y vuelve a intentarlo."));
+    });
+    document.body.appendChild(b);
+  }
+
+  function ensureAdminToolsVisibility(){
+    const card=document.getElementById("adminToolsCard");
+    if(card)card.style.display=role==="admin"?"block":"none";
   }
 
   /* ---------- Navegación protegida ---------- */
@@ -1953,7 +2022,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   saveData("italy_products",products);
   ensureSellerScreen();
   ensureSaleNumbers();
-  if(!role){ensureRoleUI()}else{configureNavigation();renderAllClean();if(navigator.onLine)syncNow()}
+  ensureCloudImportButton();
+  if(!role){ensureRoleUI();ensureAdminToolsVisibility();updateHomeDashboardClean()}else{configureNavigation();renderAllClean();if(navigator.onLine)syncNow()}
   window.addEventListener("online",()=>{clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,500);});
   window.addEventListener("offline",updateSyncStatus);
   setInterval(()=>{if(navigator.onLine&&role)syncNow()},15000);
