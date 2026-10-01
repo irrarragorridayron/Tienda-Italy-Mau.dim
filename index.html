@@ -936,6 +936,10 @@ if(!ipvDailyReports.length && Array.isArray(savedIPVBackup) && savedIPVBackup.le
   saveData("italy_ipv_daily",ipvDailyReports);
 }
 if(ipvDailyReports.length) saveData(IPV_HISTORY_BACKUP_KEY,ipvDailyReports);
+// Unifica filas históricas que pertenecen al mismo producto (mismo nombre y unidad).
+ipvDailyReports=ipvDailyReports.map(r=>({...r,rows:normalizeIPVReportRows(r.rows)}));
+saveData("italy_ipv_daily",ipvDailyReports);
+saveData(IPV_HISTORY_BACKUP_KEY,ipvDailyReports);
 let ipvMovements=loadData("italy_ipv_movements",[]);
 let capitalInitial=Number(loadData("italy_capital_initial",0))||0;
 let cashMovements=loadData("italy_cash_movements",[]);
@@ -1112,25 +1116,20 @@ if(!products.length){
   return;
 }
 let grandTotal=0;
-const rows=products.map(p=>{
-  const initial=Number(p.ipvInitialStock)||0;
-  const entries=Number(p.ipvEntries)||0;
-  const sold=Number(p.ipvSales)||0;
-  const exits=Number(p.ipvOtherExits)||0;
-  const stock=Number(p.stock)||0;
-  const price=Number(p.price)||0;
-  const amount=stock*price;
-  grandTotal+=amount;
+const rows=getIPVGroups().map(g=>{
+  const v=ipvGroupValues(g);
+  grandTotal+=v.amount;
+  const priceText=v.priceMixed?"Mixto":money(v.price);
   return `<tr>
-    <td>${p.icon||"🛒"} ${esc(p.name)}</td>
-    <td>${esc(p.unit||"unidad")}</td>
-    <td>${initial}</td>
-    <td>${entries}</td>
-    <td>${sold}</td>
-    <td>${exits}</td>
-    <td><strong>${stock}</strong></td>
-    <td>${money(price)}</td>
-    <td class="ipv-amount">${money(amount)}</td>
+    <td> ${esc(g.name)}</td>
+    <td>${esc(g.unit)}</td>
+    <td>${v.initial}</td>
+    <td>${v.entries}</td>
+    <td>${v.sales}</td>
+    <td>${v.otherExits}</td>
+    <td><strong>${v.existence}</strong></td>
+    <td>${priceText}</td>
+    <td class="ipv-amount">${money(v.amount)}</td>
   </tr>`;
 }).join("");
 c.innerHTML=`<div class="ipv-table-wrap"><table class="ipv-table">
@@ -1185,6 +1184,50 @@ function saveIPVMovement(){
   renderSaleProducts();
 }
 
+
+function normalizeProductName(name){
+  return String(name||"").trim().replace(/\s+/g," ").toLocaleLowerCase();
+}
+function getIPVGroups(){
+  const groups=new Map();
+  (Array.isArray(products)?products:[]).forEach(p=>{
+    const key=normalizeProductName(p.name)+"||"+normalizeProductName(p.unit||"unidad");
+    if(!groups.has(key)) groups.set(key,{id:p.id,name:String(p.name||"" ).trim(),unit:p.unit||"unidad",products:[]});
+    groups.get(key).products.push(p);
+  });
+  return [...groups.values()];
+}
+function ipvGroupValues(group){
+  const ps=group.products;
+  const prices=ps.map(p=>Number(p.price)||0);
+  const samePrice=prices.every(v=>v===prices[0]);
+  return {
+    ids:new Set(ps.map(p=>String(p.id))),
+    initial:ps.reduce((a,p)=>a+(Number(p.ipvInitialStock)||0),0),
+    entries:ps.reduce((a,p)=>a+(Number(p.ipvEntries)||0),0),
+    sales:ps.reduce((a,p)=>a+(Number(p.ipvSales)||0),0),
+    otherExits:ps.reduce((a,p)=>a+(Number(p.ipvOtherExits)||0),0),
+    existence:ps.reduce((a,p)=>a+(Number(p.stock)||0),0),
+    amount:ps.reduce((a,p)=>a+(Number(p.stock)||0)*(Number(p.price)||0),0),
+    price:samePrice?prices[0]:0,
+    priceMixed:!samePrice
+  };
+}
+function normalizeIPVReportRows(rows){
+  const map=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    const key=normalizeProductName(r.name)+"||"+normalizeProductName(r.unit||"unidad");
+    if(!map.has(key)){
+      map.set(key,{...r,initial:Number(r.initial)||0,entries:Number(r.entries)||0,sales:Number(r.sales)||0,otherExits:Number(r.otherExits)||0,existence:Number(r.existence)||0,amount:Number(r.amount)||0,price:Number(r.price)||0,priceMixed:false});
+    }else{
+      const x=map.get(key);
+      x.initial+=Number(r.initial)||0; x.entries+=Number(r.entries)||0; x.sales+=Number(r.sales)||0; x.otherExits+=Number(r.otherExits)||0; x.existence+=Number(r.existence)||0; x.amount+=Number(r.amount)||0;
+      if(Number(r.price)!==Number(x.price)) x.priceMixed=true;
+    }
+  });
+  return [...map.values()];
+}
+
 function localDateKey(date=new Date()){
   const d=new Date(date);
   const y=d.getFullYear();
@@ -1219,18 +1262,21 @@ function rebuildIPVHistoryIfMissing(){
     const mov=Array.isArray(ipvMovements)?ipvMovements:[];
     const movUntil=mov.filter(m=>m&&!m.reverted&&localDateKey(m.date)<=dateKey);
     const movDay=movUntil.filter(m=>localDateKey(m.date)===dateKey);
-    const rows=products.map(p=>{
-      const initialBase=Math.max(0,num(p.ipvInitialStock));
-      const entriesBefore=movUntil.filter(m=>m.productId===p.id&&m.type==="entry"&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+num(m.quantity),0);
-      const salesBefore=salesAll.filter(s=>localDateKey(s.date)<dateKey).reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>i.productId===p.id).reduce((x,i)=>x+num(i.quantity),0):0),0);
-      const exitsBefore=movUntil.filter(m=>m.productId===p.id&&(m.type==="exit"||m.type==="personal_withdrawal")&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+num(m.quantity),0);
+    const rows=getIPVGroups().map(group=>{
+      const ids=new Set(group.products.map(p=>String(p.id)));
+      const initialBase=group.products.reduce((a,p)=>a+Math.max(0,num(p.ipvInitialStock)),0);
+      const entriesBefore=movUntil.filter(m=>ids.has(String(m.productId))&&m.type==="entry"&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+num(m.quantity),0);
+      const salesBefore=salesAll.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>ids.has(String(i.productId))&&localDateKey(s.date)<dateKey).reduce((x,i)=>x+num(i.quantity),0):0),0);
+      const exitsBefore=movUntil.filter(m=>ids.has(String(m.productId))&&(m.type==="exit"||m.type==="personal_withdrawal")&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+num(m.quantity),0);
       const start=Math.max(0,initialBase+entriesBefore-salesBefore-exitsBefore);
-      const entries=movDay.filter(m=>m.productId===p.id&&m.type==="entry").reduce((a,m)=>a+num(m.quantity),0);
-      const salesQty=salesDay.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>i.productId===p.id).reduce((x,i)=>x+num(i.quantity),0):0),0);
-      const exits=movDay.filter(m=>m.productId===p.id&&(m.type==="exit"||m.type==="personal_withdrawal")).reduce((a,m)=>a+num(m.quantity),0);
+      const entries=movDay.filter(m=>ids.has(String(m.productId))&&m.type==="entry").reduce((a,m)=>a+num(m.quantity),0);
+      const salesQty=salesDay.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>ids.has(String(i.productId))).reduce((x,i)=>x+num(i.quantity),0):0),0);
+      const exits=movDay.filter(m=>ids.has(String(m.productId))&&(m.type==="exit"||m.type==="personal_withdrawal")).reduce((a,m)=>a+num(m.quantity),0);
       const existence=Math.max(0,start+entries-salesQty-exits);
-      const price=num(p.price);
-      return {productId:p.id,name:p.name,unit:p.unit||"unidad",initial:start,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
+      const values=ipvGroupValues(group);
+      const price=values.price;
+      const priceMixed=values.priceMixed;
+      return {productId:group.id,name:group.name,unit:group.unit,initial:start,entries,sales:salesQty,otherExits:exits,existence,price,priceMixed,amount:priceMixed?((existence*group.products.reduce((a,p)=>a+(Number(p.price)||0),0))/Math.max(1,group.products.length)):existence*price};
     });
     const report={date:dateKey,rows,total:rows.reduce((a,r)=>a+r.amount,0),salesCount:salesDay.length,salesTotal:salesDay.reduce((a,s)=>a+num(s.total),0),entries:rows.reduce((a,r)=>a+r.entries,0),otherExits:rows.reduce((a,r)=>a+r.otherExits,0),generatedAt:new Date().toISOString(),reconstructed:true};
     ipvDailyReports.push(report);
@@ -1244,19 +1290,19 @@ function dailyDataFor(dateKey){
   const salesDay=allSales.filter(s=>localDateKey(s.date)===dateKey);
   const allMov=(Array.isArray(ipvMovements)?ipvMovements:[]).filter(m=>m&&!m.reverted);
   const movDay=allMov.filter(m=>localDateKey(m.date)===dateKey);
-  const rows=products.map(p=>{
-    const pid=String(p.id);
-    const entriesBefore=allMov.filter(m=>String(m.productId)===pid&&m.type==='entry'&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+Number(m.quantity||0),0);
-    const salesBefore=allSales.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>String(i.productId)===pid&&localDateKey(s.date)<dateKey).reduce((x,i)=>x+Number(i.quantity||0),0):0),0);
-    const exitsBefore=allMov.filter(m=>String(m.productId)===pid&&(m.type==='exit'||m.type==='personal_withdrawal')&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+Number(m.quantity||0),0);
-    const initialBase=Math.max(0,Number(p.ipvInitialStock)||0);
+  const rows=getIPVGroups().map(group=>{
+    const ids=new Set(group.products.map(p=>String(p.id)));
+    const entriesBefore=allMov.filter(m=>ids.has(String(m.productId))&&m.type==='entry'&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+Number(m.quantity||0),0);
+    const salesBefore=allSales.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>ids.has(String(i.productId))&&localDateKey(s.date)<dateKey).reduce((x,i)=>x+Number(i.quantity||0),0):0),0);
+    const exitsBefore=allMov.filter(m=>ids.has(String(m.productId))&&(m.type==='exit'||m.type==='personal_withdrawal')&&localDateKey(m.date)<dateKey).reduce((a,m)=>a+Number(m.quantity||0),0);
+    const initialBase=group.products.reduce((a,p)=>a+Math.max(0,Number(p.ipvInitialStock)||0),0);
     const opening=Math.max(0,initialBase+entriesBefore-salesBefore-exitsBefore);
-    const entries=movDay.filter(m=>String(m.productId)===pid&&m.type==='entry').reduce((a,m)=>a+Number(m.quantity||0),0);
-    const salesQty=salesDay.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>String(i.productId)===pid).reduce((x,i)=>x+Number(i.quantity||0),0):0),0);
-    const exits=movDay.filter(m=>String(m.productId)===pid&&(m.type==='exit'||m.type==='personal_withdrawal')).reduce((a,m)=>a+Number(m.quantity||0),0);
+    const entries=movDay.filter(m=>ids.has(String(m.productId))&&m.type==='entry').reduce((a,m)=>a+Number(m.quantity||0),0);
+    const salesQty=salesDay.reduce((a,s)=>a+(Array.isArray(s.items)?s.items.filter(i=>ids.has(String(i.productId))).reduce((x,i)=>x+Number(i.quantity||0),0):0),0);
+    const exits=movDay.filter(m=>ids.has(String(m.productId))&&(m.type==='exit'||m.type==='personal_withdrawal')).reduce((a,m)=>a+Number(m.quantity||0),0);
     const existence=Math.max(0,opening+entries-salesQty-exits);
-    const price=Number(p.price)||0;
-    return {productId:p.id,name:p.name,unit:p.unit||'unidad',initial:opening,entries,sales:salesQty,otherExits:exits,existence,price,amount:existence*price};
+    const values=ipvGroupValues(group);
+    return {productId:group.id,name:group.name,unit:group.unit,initial:opening,entries,sales:salesQty,otherExits:exits,existence,price:values.price,priceMixed:values.priceMixed,amount:values.priceMixed?(existence*group.products.reduce((a,p)=>a+(Number(p.price)||0),0)/Math.max(1,group.products.length)):existence*values.price};
   });
   return {date:dateKey,rows,total:rows.reduce((a,r)=>a+r.amount,0),salesCount:salesDay.length,salesTotal:salesDay.reduce((a,s)=>a+Number(s.total||0),0),entries:rows.reduce((a,r)=>a+r.entries,0),otherExits:rows.reduce((a,r)=>a+r.otherExits,0)};
 }
@@ -1274,7 +1320,7 @@ function generateDailyIPV(){
 function renderDailyIPV(report){
   const c=document.getElementById("dailyIPVContainer");
   if(!report){c.innerHTML='<div class="empty">Selecciona una fecha y pulsa “Generar IPV del día”.</div>';return}
-  const rows=report.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${r.initial}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.otherExits}</td><td><strong>${r.existence}</strong></td><td>${money(r.price)}</td><td class="ipv-amount">${money(r.amount)}</td></tr>`).join("");
+  const rows=report.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${r.initial}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.otherExits}</td><td><strong>${r.existence}</strong></td><td>${r.priceMixed?"Mixto":money(r.price)}</td><td class="ipv-amount">${money(r.amount)}</td></tr>`).join("");
   c.innerHTML=`<div class="hint"><strong>IPV del ${formatDateKey(report.date)}</strong><br>Ventas: ${report.salesCount} · Total vendido: ${money(report.salesTotal)} · Entradas: ${report.entries} · Otras salidas: ${report.otherExits}</div><div class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead><tbody>${rows}</tbody></table></div><div class="card ipv-total-card" style="margin-top:10px;margin-bottom:0"><div class="ipv-total-label">VALOR DEL INVENTARIO AL CIERRE DEL DÍA</div><div class="ipv-grand-total">${money(report.total)}</div></div>`;
 }
 function showTodayIPV(){
