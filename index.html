@@ -770,8 +770,10 @@ main{max-width:1120px}
 <div id="inventoryAuditCardStatic" class="card" style="margin-top:12px">
   <h3 style="margin-top:0">🔎 Auditoría del inventario</h3>
   <p class="subtitle">Comprueba qué cambió desde el IPV del 27/09/2026 sin modificar los datos.</p>
-  <button type="button" class="secondary" style="width:100%" onclick="renderInventoryAudit(auditInventoryFromDate('2026-09-27'))">🔎 Auditar inventario desde el día 27</button>
+  <button type="button" class="secondary" style="width:100%" onclick="runSafeInventoryAudit()">🔎 Auditoría 1 — resumen desde el día 27</button>
+  <button type="button" class="secondary" style="width:100%;margin-top:8px" onclick="runDeepInventoryAudit()">🧭 Auditoría 2 — rastreo profundo de IDs y movimientos</button>
   <div id="inventoryAuditResultsStatic" style="margin-top:10px"></div>
+  <div id="inventoryDeepAuditResults" style="margin-top:10px"></div>
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
   <button class="primary" style="margin-top:0" onclick="openIPVMovementModal('entry')">Registrar entrada</button>
@@ -2142,6 +2144,98 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     }
     rows.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
     return {startKey,hasBaseline:!!baseline,baselineDate:baseline?.date||null,productsCurrent:current.length,duplicateGroups:[...currentGroups.entries()].filter(([,v])=>v.length>1).map(([k,v])=>({key:k,ids:v.map(p=>p.id),name:v[0].name,unit:v[0].unit,count:v.length,stock:v.reduce((a,p)=>a+num(p.stock),0)})),rows};
+  }
+
+  function runSafeInventoryAudit(){
+    const box=document.getElementById("inventoryAuditResultsStatic");
+    if(box)box.innerHTML='<div class="hint">⏳ Analizando…</div>';
+    try{ renderInventoryAudit(auditInventoryFromDate("2026-09-27")); }
+    catch(e){ if(box)box.innerHTML=`<div class="hint">⚠️ No se pudo ejecutar la auditoría: ${esc(e?.message||e)}</div>`; }
+  }
+
+  /* ---------- Auditoría 2: rastreo profundo, SOLO LECTURA ---------- */
+  function deepInventoryAuditFromDate(startKey="2026-09-27"){
+    const reports=Array.isArray(ipvDailyReports)?ipvDailyReports:[];
+    const baseline=reports.find(r=>String(r?.date)===startKey);
+    const current=Array.isArray(products)?products:[];
+    const moves=Array.isArray(ipvMovements)?ipvMovements.filter(m=>m&&!m.reverted):[];
+    const allSales=Array.isArray(sales)?sales.filter(s=>s&&!s.reverted):[];
+    const norm=(v)=>String(v??"").trim().toLocaleLowerCase();
+    const keyOf=(name,unit)=>norm(name)+"||"+norm(unit||"unidad");
+    const baseRows=Array.isArray(baseline?.rows)?baseline.rows:[];
+    const currentById=new Map(current.map(p=>[String(p.id),p]));
+    const currentByKey=new Map();
+    current.forEach(p=>{const k=keyOf(p.name,p.unit);if(!currentByKey.has(k))currentByKey.set(k,[]);currentByKey.get(k).push(p)});
+    const baseById=new Map();
+    const baseByKey=new Map();
+    baseRows.forEach(r=>{
+      const id=r?.productId??r?.id??r?.product_id;
+      const row={...r,productId:id==null?null:String(id)};
+      if(row.productId)baseById.set(row.productId,row);
+      const k=keyOf(row.name,row.unit);
+      if(!baseByKey.has(k))baseByKey.set(k,[]);
+      baseByKey.get(k).push(row);
+    });
+    const calc=(productIds)=>{
+      const ids=new Set((productIds||[]).map(String));
+      const relevantMoves=moves.filter(m=>localDateKey(m.date)>startKey&&ids.has(String(m.productId)));
+      const entries=relevantMoves.filter(m=>m.type==="entry").reduce((a,m)=>a+num(m.quantity),0);
+      const exits=relevantMoves.filter(m=>m.type==="exit"||m.type==="personal_withdrawal").reduce((a,m)=>a+num(m.quantity),0);
+      const saleRecords=[]; let sold=0;
+      for(const s of allSales){
+        if(localDateKey(s.date)<=startKey)continue;
+        for(const i of (Array.isArray(s.items)?s.items:[])){
+          if(ids.has(String(i.productId))){const q=num(i.quantity);sold+=q;saleRecords.push({date:s.date,saleId:s.id||s.saleNumber||"",productId:String(i.productId),quantity:q});}
+        }
+      }
+      return {entries,sold,exits,moves:relevantMoves.map(m=>({date:m.date,type:m.type,productId:String(m.productId),quantity:num(m.quantity),id:m.id||""})),saleRecords};
+    };
+    const rows=[]; const seenBase=new Set(); const seenCurrent=new Set();
+    for(const [id,b] of baseById){
+      seenBase.add(id);
+      const exact=currentById.get(id);
+      const candidates=currentByKey.get(keyOf(b.name,b.unit))||[];
+      const equivalent=candidates.find(p=>String(p.id)!==id)||null;
+      const target=exact?exact:equivalent;
+      const ids=target?[String(target.id)]:[];
+      ids.forEach(x=>seenCurrent.add(x));
+      const calcData=calc(exact?[id]:ids);
+      const baselineQty=num(b.existence);
+      const expected=baselineQty+calcData.entries-calcData.sold-calcData.exits;
+      const actual=target?num(target.stock):0;
+      let status="OK";
+      if(!exact&&equivalent)status="CAMBIO DE ID / POSIBLE REEMPLAZO";
+      else if(!exact)status="DESAPARECIÓ";
+      if(target&&actual!==expected)status+=(status==="OK"?"DIFERENCIA":" · DIFERENCIA");
+      if(status!=="OK") rows.push({status,name:b.name||"Producto",unit:b.unit||"unidad",baselineId:id,currentId:target?String(target.id):"—",baseline:baselineQty,entries:calcData.entries,sold:calcData.sold,exits:calcData.exits,expected,actual,difference:actual-expected,moves:calcData.moves,saleRecords:calcData.saleRecords});
+    }
+    for(const p of current){
+      const id=String(p.id); if(seenCurrent.has(id))continue;
+      const k=keyOf(p.name,p.unit); const baseCandidates=baseByKey.get(k)||[];
+      const exactBase=baseById.get(id);
+      if(exactBase)continue;
+      const c=calc([id]);
+      rows.push({status:baseCandidates.length?"APARECIÓ CON OTRO ID / YA EXISTÍA EN IPV":"NUEVO DESDE IPV",name:p.name||"Producto",unit:p.unit||"unidad",baselineId:baseCandidates.map(b=>String(b.productId||"—")).join(", ")||"—",currentId:id,baseline:baseCandidates.reduce((a,b)=>a+num(b.existence),0),entries:c.entries,sold:c.sold,exits:c.exits,expected:null,actual:num(p.stock),difference:null,moves:c.moves,saleRecords:c.saleRecords});
+    }
+    rows.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+    return {startKey,hasBaseline:!!baseline,rows,baseCount:baseRows.length,currentCount:current.length};
+  }
+
+  function runDeepInventoryAudit(){
+    const box=document.getElementById("inventoryDeepAuditResults");
+    if(box)box.innerHTML='<div class="hint">⏳ Ejecutando auditoría profunda…</div>';
+    try{
+      const r=deepInventoryAuditFromDate("2026-09-27");
+      if(!box)return;
+      if(!r.hasBaseline){box.innerHTML='<div class="hint">⚠️ No existe el IPV guardado del 27/09/2026.</div>';return;}
+      if(!r.rows.length){box.innerHTML='<div class="hint">✅ No se encontraron incidencias en el rastreo profundo.</div>';return;}
+      const html=r.rows.map((x,idx)=>{
+        const mov=x.moves.length?x.moves.map(m=>`${esc(String(m.date||""))} · ${esc(m.type)} · ${m.quantity} · ID ${esc(m.productId)}`).join('<br>'):'Sin movimientos IPV posteriores';
+        const sl=x.saleRecords.length?x.saleRecords.map(m=>`${esc(String(m.date||""))} · venta ${esc(m.saleId)} · ${m.quantity} · ID ${esc(m.productId)}`).join('<br>'):'Sin ventas posteriores';
+        return `<div class="card" style="margin:8px 0;padding:12px"><strong>${idx+1}. ${esc(x.name)}</strong> — ${esc(x.unit)}<br><span class="hint">${esc(x.status)}</span><br><br><strong>ID IPV 27:</strong> ${esc(x.baselineId)}<br><strong>ID actual:</strong> ${esc(x.currentId)}<br><strong>IPV 27:</strong> ${x.baseline} · <strong>Entradas:</strong> ${x.entries} · <strong>Ventas:</strong> ${x.sold} · <strong>Salidas:</strong> ${x.exits}<br><strong>Esperado:</strong> ${x.expected===null?'—':x.expected} · <strong>Actual:</strong> ${x.actual} · <strong>Diferencia:</strong> ${x.difference===null?'—':x.difference>0?'+'+x.difference:x.difference}<br><br><strong>Movimientos posteriores:</strong><br>${mov}<br><br><strong>Ventas posteriores:</strong><br>${sl}</div>`;
+      }).join('');
+      box.innerHTML=`<div class="hint"><strong>Auditoría profunda desde ${formatDateKey(r.startKey)}</strong><br>Base IPV: ${r.baseCount} filas · Productos actuales: ${r.currentCount} · Incidencias: ${r.rows.length}<br><small>Solo lectura. No guarda, corrige, fusiona ni elimina datos.</small></div>${html}`;
+    }catch(e){box.innerHTML=`<div class="hint">⚠️ Error en la auditoría profunda: ${esc(e?.message||e)}<br>Los datos no fueron modificados.</div>`;}
   }
 
   function renderInventoryAudit(result){
