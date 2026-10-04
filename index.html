@@ -2238,6 +2238,112 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     }catch(e){box.innerHTML=`<div class="hint">⚠️ Error en la auditoría profunda: ${esc(e?.message||e)}<br>Los datos no fueron modificados.</div>`;}
   }
 
+  /* ---------- Auditoría 3: forense de continuidad de IDs e historial IPV, SOLO LECTURA ----------
+     No modifica productos, inventario, ventas, movimientos, caja ni Supabase. */
+  async function forensicInventoryAudit3(startKey="2026-09-27"){
+    const reports=Array.isArray(ipvDailyReports)?ipvDailyReports:[];
+    const current=Array.isArray(products)?products:[];
+    const moves=Array.isArray(ipvMovements)?ipvMovements.filter(m=>m&&!m.reverted):[];
+    const allSales=Array.isArray(sales)?sales.filter(s=>s&&!s.reverted):[];
+    const norm=v=>String(v??"").trim().toLocaleLowerCase();
+    const keyOf=(n,u)=>norm(n)+"||"+norm(u||"unidad");
+    const baseline=reports.find(r=>String(r?.date)===startKey);
+    const baseRows=Array.isArray(baseline?.rows)?baseline.rows:[];
+    const baseByKey=new Map();
+    const baseById=new Map();
+    baseRows.forEach(r=>{
+      const id=r?.productId??r?.id??r?.product_id;
+      const row={...r,productId:id==null?null:String(id)};
+      const k=keyOf(row.name,row.unit);
+      if(!baseByKey.has(k))baseByKey.set(k,[]);
+      baseByKey.get(k).push(row);
+      if(row.productId)baseById.set(row.productId,row);
+    });
+    const currentByKey=new Map();
+    current.forEach(p=>{const k=keyOf(p.name,p.unit);if(!currentByKey.has(k))currentByKey.set(k,[]);currentByKey.get(k).push(p)});
+
+    // Reconstruye la continuidad del producto a través de TODOS los IPV posteriores.
+    const timeline=[];
+    const dates=[...new Set(reports.map(r=>String(r?.date||"")).filter(d=>d&&d>=startKey))].sort();
+    for(const date of dates){
+      const rep=reports.find(r=>String(r?.date)===date); const rows=Array.isArray(rep?.rows)?rep.rows:[];
+      timeline.push({date,rows:rows.map(r=>({name:r.name||"",unit:r.unit||"unidad",id:String(r?.productId??r?.id??r?.product_id??""),existence:num(r.existence)}))});
+    }
+
+    const keyTimeline=new Map();
+    timeline.forEach(day=>day.rows.forEach(r=>{
+      const k=keyOf(r.name,r.unit);if(!keyTimeline.has(k))keyTimeline.set(k,[]);keyTimeline.get(k).push({date:day.date,id:r.id,existence:r.existence});
+    }));
+
+    function historyForId(id){
+      const sid=String(id);
+      const mv=moves.filter(m=>String(m.productId)===sid).map(m=>({date:m.date,type:m.type,quantity:num(m.quantity),id:m.id||""}));
+      const sl=[];
+      allSales.forEach(s=>{
+        for(const i of (Array.isArray(s.items)?s.items:[])) if(String(i.productId)===sid) sl.push({date:s.date,saleId:s.id||s.saleNumber||"",quantity:num(i.quantity)});
+      });
+      return {moves:mv,sales:sl};
+    }
+
+    const cases=[];
+    const baseKeys=new Set(baseByKey.keys());
+    for(const [k,bs] of baseByKey){
+      const cs=currentByKey.get(k)||[];
+      const baseIds=bs.map(b=>String(b.productId||"")).filter(Boolean);
+      const curIds=cs.map(p=>String(p.id));
+      const allIds=[...new Set([...baseIds,...curIds])];
+      const hist=keyTimeline.get(k)||[];
+      const idChanged=baseIds.length&&curIds.length&&!curIds.some(id=>baseIds.includes(id));
+      const firstNew=hist.find(h=>h.id&&curIds.includes(h.id)&&!baseIds.includes(h.id));
+      const lastOld=[...hist].reverse().find(h=>h.id&&baseIds.includes(h.id));
+      const status=idChanged?"REEMPLAZO DE ID / MISMO PRODUCTO":(baseIds.some(id=>!curIds.includes(id))?"ID IPV YA NO ESTÁ EN CATÁLOGO":"CONTINUIDAD");
+      if(idChanged||baseIds.some(id=>!curIds.includes(id))||curIds.some(id=>!baseIds.includes(id))){
+        cases.push({key:k,name:bs[0]?.name||cs[0]?.name||"Producto",unit:bs[0]?.unit||cs[0]?.unit||"unidad",status,baseIds,currentIds:curIds,baseQty:bs.reduce((a,b)=>a+num(b.existence),0),currentQty:cs.reduce((a,p)=>a+num(p.stock),0),firstNew,lastOld,timeline:hist,ids:allIds.map(id=>({id,...historyForId(id)}))});
+      }
+    }
+    for(const [k,cs] of currentByKey){
+      if(baseKeys.has(k))continue;
+      cases.push({key:k,name:cs[0]?.name||"Producto",unit:cs[0]?.unit||"unidad",status:"PRODUCTO ACTUAL SIN PRESENCIA EN IPV 27",baseIds:[],currentIds:cs.map(p=>String(p.id)),baseQty:0,currentQty:cs.reduce((a,p)=>a+num(p.stock),0),firstNew:null,lastOld:null,timeline:keyTimeline.get(k)||[],ids:cs.map(p=>({id:String(p.id),...historyForId(p.id)}))});
+    }
+
+    // Comprobación opcional y de SOLO LECTURA contra Supabase: no escribe nada.
+    let cloud=null;
+    if(navigator.onLine&&typeof cloudRequest==="function"){
+      try{
+        const remote=await cloudRequest('/rest/v1/products?select=id,name,unit,stock,created_at,updated_at&order=created_at.asc');
+        if(Array.isArray(remote)) cloud=remote.map(p=>({id:String(p.id),name:p.name||"",unit:p.unit||"unidad",stock:num(p.stock),created_at:p.created_at||null,updated_at:p.updated_at||null}));
+      }catch(e){cloud={error:String(e?.message||e)}}
+    }
+    return {startKey,hasBaseline:!!baseline,baseCount:baseRows.length,currentCount:current.length,dates,timeline,cases,cloud};
+  }
+
+  window.runForensicInventoryAudit3=async function(){
+    const box=document.getElementById("inventoryForensicAudit3Results");
+    if(box)box.innerHTML='<div class="hint">⏳ Reconstruyendo continuidad de IDs, IPV históricos y movimientos…</div>';
+    try{
+      const r=await forensicInventoryAudit3("2026-09-27");
+      if(!box)return;
+      if(!r.hasBaseline){box.innerHTML='<div class="hint">⚠️ No existe el IPV del 27/09/2026. No se modificó ningún dato.</div>';return;}
+      const rows=r.cases.map((x,i)=>{
+        const timeline=x.timeline.length?x.timeline.map(t=>`${esc(t.date)} → ID ${esc(t.id||"—")} → existencia ${t.existence}`).join('<br>'):'Sin IPV posterior disponible';
+        const ids=x.ids.map(h=>`<div style="margin:5px 0"><strong>ID ${esc(h.id)}</strong><br>Movimientos: ${h.moves.length?h.moves.map(m=>`${esc(String(m.date||""))} · ${esc(m.type)} · ${m.quantity}`).join('<br>'):'ninguno'}<br>Ventas: ${h.sales.length?h.sales.map(m=>`${esc(String(m.date||""))} · ${m.quantity}`).join('<br>'):'ninguna'}</div>`).join('');
+        return `<div class="card" style="margin:8px 0;padding:12px"><strong>${i+1}. ${esc(x.name)}</strong> — ${esc(x.unit)}<br><span class="hint">${esc(x.status)}</span><br><br><strong>IDs IPV 27:</strong> ${x.baseIds.map(esc).join(', ')||'—'}<br><strong>IDs actuales:</strong> ${x.currentIds.map(esc).join(', ')||'—'}<br><strong>Existencia IPV 27:</strong> ${x.baseQty} · <strong>Existencia actual:</strong> ${x.currentQty}<br><br><strong>Continuidad en IPV posteriores:</strong><br>${timeline}<br><br><strong>Rastreo individual de IDs:</strong>${ids||'<br>Sin registros'}${x.firstNew?`<br><br><strong>Primera aparición del ID actual en IPV:</strong> ${esc(x.firstNew.date)} → ${esc(x.firstNew.id)}`:''}${x.lastOld?`<br><strong>Última aparición del ID original en IPV:</strong> ${esc(x.lastOld.date)} → ${esc(x.lastOld.id)}`:''}</div>`;
+      }).join('');
+      let cloudHtml='';
+      if(Array.isArray(r.cloud)){
+        const suspicious=r.cloud.filter(p=>!baseByIdSafe(r,p.id));
+        cloudHtml=`<div class="hint"><strong>Supabase (solo lectura):</strong> ${r.cloud.length} productos actuales en la nube. ${suspicious.length} no coinciden por ID con el IPV 27.</div>`;
+      }else if(r.cloud?.error) cloudHtml=`<div class="hint">⚠️ No se pudo consultar Supabase en esta auditoría: ${esc(r.cloud.error)}. El análisis local sí se completó.</div>`;
+      box.innerHTML=`<div class="hint"><strong>Auditoría 3 — forense desde ${formatDateKey(r.startKey)}</strong><br>Base IPV: ${r.baseCount} filas · Productos actuales: ${r.currentCount} · Casos rastreados: ${r.cases.length}<br>IPV posteriores encontrados: ${r.dates.length}<br><small>Solo lectura. No guarda, corrige, fusiona, elimina ni sincroniza datos.</small></div>${cloudHtml}${rows||'<div class="hint">✅ No se detectaron cambios de ID entre el IPV 27 y el catálogo actual.</div>'}`;
+    }catch(e){if(box)box.innerHTML=`<div class="hint">⚠️ Error en Auditoría 3: ${esc(e?.message||e)}<br>No se modificó ningún dato.</div>`;}
+  };
+
+  function baseByIdSafe(r,id){
+    const reports=Array.isArray(ipvDailyReports)?ipvDailyReports:[];
+    const b=reports.find(x=>String(x?.date)==="2026-09-27");
+    return (Array.isArray(b?.rows)?b.rows:[]).some(x=>String(x?.productId??x?.id??x?.product_id??"")===String(id));
+  }
+
   function renderInventoryAudit(result){
     const box=document.getElementById("inventoryAuditResultsStatic")||document.getElementById("inventoryAuditResults");if(!box)return;
     if(!result.hasBaseline){box.innerHTML=`<div class="hint">⚠️ No existe un cierre IPV guardado del ${formatDateKey(result.startKey)}. La auditoría no inventará una base; primero hay que recuperar ese cierre.</div>`;return}
@@ -2256,6 +2362,10 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     card.innerHTML=`<h3 style="margin-top:0">🔎 Auditoría del inventario</h3><p class="subtitle">Comprobar qué cambió desde el IPV del 27/09/2026 sin modificar los datos.</p><button type="button" class="secondary" id="runInventoryAuditBtn" style="width:100%">🔎 Auditar inventario desde el día 27</button><div id="inventoryAuditResults" style="margin-top:10px"></div>`;
     anchor.parentNode?.insertBefore(card,anchor.nextSibling);
     document.getElementById("runInventoryAuditBtn")?.addEventListener("click",()=>renderInventoryAudit(auditInventoryFromDate("2026-09-27")));
+    const deep=document.createElement("div");deep.id="inventoryForensicAudit3Card";deep.className="card";deep.style.marginTop="12px";
+    deep.innerHTML=`<h3 style="margin-top:0">🧬 Auditoría 3 — rastreo forense</h3><p class="subtitle">Reconstruye la continuidad de cada producto desde el IPV del 27: IDs, IPV posteriores, movimientos, ventas y, si hay Internet, comparación de solo lectura con Supabase.</p><button type="button" class="secondary" id="runForensicAudit3Btn" style="width:100%">🧬 Ejecutar Auditoría 3</button><div id="inventoryForensicAudit3Results" style="margin-top:10px"></div>`;
+    card.parentNode?.insertBefore(deep,card.nextSibling);
+    document.getElementById("runForensicAudit3Btn")?.addEventListener("click",()=>window.runForensicInventoryAudit3());
   }
 
   /* ---------- Navegación protegida ---------- */
