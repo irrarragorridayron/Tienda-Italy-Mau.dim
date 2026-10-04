@@ -2221,7 +2221,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     return {startKey,hasBaseline:!!baseline,rows,baseCount:baseRows.length,currentCount:current.length};
   }
 
-  function runDeepInventoryAudit(){
+  window.runDeepInventoryAudit=function(){
     const box=document.getElementById("inventoryDeepAuditResults");
     if(box)box.innerHTML='<div class="hint">⏳ Ejecutando auditoría profunda…</div>';
     try{
