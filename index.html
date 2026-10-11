@@ -822,14 +822,20 @@ main{max-width:1120px}
 <button id="adminAddProductBtn" class="primary" onclick="openProductModal()">Agregar producto</button>
 
 <div id="adminToolsCard" class="card" style="margin-top:14px;display:none">
-  <h3 style="margin-top:0">Puesta a cero inicial</h3>
-  <div class="hint">Úsala <strong>una sola vez</strong>, antes de comenzar a trabajar. Borra las ventas, movimientos, capital e historial IPV compartidos y deja los productos preparados para comenzar desde cero. Después de realizarla, no se ejecutará ningún reinicio automático.</div>
-  <button class="danger" style="width:100%;padding:14px" onclick="initialStoreSetupAdmin()">Hacer puesta a cero inicial</button>
+  <h3 style="margin-top:0">Inicio desde cero (solo este teléfono)</h3>
+  <div class="hint">Borra los productos, ventas, movimientos, capital e historial IPV guardados en este teléfono. No modifica Supabase. Úsala una sola vez antes de comenzar.</div>
+  <button class="danger" style="width:100%;padding:14px" onclick="initialStoreSetupAdmin()">Borrar datos locales y comenzar</button>
 </div>
 <div id="initialDeviceCard" class="card" style="margin-top:14px">
   <h3 style="margin-top:0">Inicio de la tienda</h3>
-  <div class="hint">Después de que el administrador haga la puesta a cero inicial, pulsa este botón en <strong>cada teléfono</strong> para eliminar cualquier venta o cola offline antigua de ese dispositivo.</div>
+  <div class="hint">Esta herramienta solo limpia movimientos operativos y conserva el catálogo. Para comenzar totalmente desde cero usa la opción anterior.</div>
   <button class="secondary" style="width:100%;padding:14px" onclick="prepareInitialDevice()">Preparar este teléfono para comenzar</button>
+  <hr style="border-color:#ffffff18;margin:16px 0">
+  <h3>Respaldo local</h3>
+  <div class="hint">Exporta un archivo de respaldo para guardarlo fuera del teléfono. La copia automática en Supabase está pausada hasta configurar su almacenamiento seguro.</div>
+  <button class="secondary" style="width:100%;padding:12px" onclick="exportLocalStoreBackup()">Exportar respaldo JSON</button>
+  <input id="localBackupFileInput" type="file" accept="application/json,.json" style="display:none" onchange="importLocalStoreBackup(event)">
+  <button class="secondary" style="width:100%;padding:12px;margin-top:8px" onclick="document.getElementById('localBackupFileInput').click()">Restaurar respaldo JSON</button>
 </div>
 
 <br>
@@ -1527,6 +1533,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   const DEVICE_KEY="italy_device_clean_v1";
   const APPLIED_SELLER_KEY="italy_applied_seller_sales_v1";
   const SALE_QUEUE_KEY="italy_seller_sale_queue_v1";
+  // Modo local seguro: la nube no puede modificar ni borrar datos de este teléfono.
+  const LOCAL_FIRST_SAFE_MODE=true;
   // MODO TEMPORAL DE TRABAJO: solo Administrador.
   // El código del vendedor se conserva intacto para reactivarlo más adelante.
   let role="admin";
@@ -1609,19 +1617,15 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 
   /* ---------- Capital: fórmula original conservada ---------- */
   function currentCapital(){
-    // Fórmula contable definida para la tienda:
-    // capital actual = capital inicial + ventas + inyección de capital
-    //                  - retiro de efectivo del capital
-    //                  - salidas por deterioro/mal estado
-    //                  - retiros personales de mercancía al costo
-    const salesTotal=activeSales().reduce((a,s)=>a+totalSale(s),0);
+    // Capital actual = capital inicial + ganancia acumulada + inyecciones
+    // - retiros de capital - pérdidas por deterioro.
+    // No se suman las ventas completas: solo su ganancia. La mercancía retirada
+    // para uso personal y pagada al costo no genera ganancia ni reduce el capital neto.
+    const profit=activeSales().reduce((a,s)=>a+saleProfit(s),0);
     const injections=(Array.isArray(capitalInjections)?capitalInjections:[]).reduce((a,m)=>a+num(m.amount),0);
     const withdrawals=(Array.isArray(capitalWithdrawals)?capitalWithdrawals:[]).reduce((a,m)=>a+num(m.amount),0);
     const deterioration=(Array.isArray(deteriorationExits)?deteriorationExits:[]).reduce((a,m)=>a+num(m.amount),0);
-    const personal=(Array.isArray(ipvMovements)?ipvMovements:[])
-      .filter(m=>m&&m.type==='personal_withdrawal'&&!m.reverted)
-      .reduce((a,m)=>a+num(m.cashAmount||num(m.unitCost)*num(m.quantity)),0);
-    return num(capitalInitial)+salesTotal+injections-withdrawals-deterioration-personal;
+    return num(capitalInitial)+profit+injections-withdrawals-deterioration;
   }
   function inventoryCost(){
     return (Array.isArray(products)?products:[]).reduce((sum,p)=>sum+Math.max(0,num(p.stock))*Math.max(0,num(p.cost)),0);
@@ -1825,42 +1829,59 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 
   /* ---------- Puesta a cero / herramientas antiguas ---------- */
   function clearLocalOperationalData(){
-    // El historial IPV es permanente: no se borra al limpiar datos operativos.
-    saveData("italy_ipv_daily",Array.isArray(ipvDailyReports)?ipvDailyReports:[]);
-    saveData(IPV_HISTORY_BACKUP_KEY,Array.isArray(ipvDailyReports)?ipvDailyReports:[]);
-    cart=[];sales=[];pendingSales=[];ipvMovements=[];cashMovements=[];capitalInitial=0;capitalInjections=[];capitalWithdrawals=[];deteriorationExits=[];
-    ["italy_sales","italy_pending_sales","italy_ipv_movements","italy_cash_movements","italy_capital_initial","italy_capital_injections","italy_capital_withdrawals","italy_deterioration_exits"].forEach(k=>localStorage.removeItem(k));
+    cart=[];sales=[];pendingSales=[];ipvMovements=[];cashMovements=[];capitalInitial=0;capitalInjections=[];capitalWithdrawals=[];deteriorationExits=[];ipvDailyReports=[];
+    ["italy_sales","italy_pending_sales","italy_ipv_movements","italy_cash_movements","italy_capital_initial","italy_capital_injections","italy_capital_withdrawals","italy_deterioration_exits","italy_ipv_daily",IPV_HISTORY_BACKUP_KEY,"italy_seller_sale_queue_v1","italy_applied_seller_sales_v1"].forEach(k=>localStorage.removeItem(k));
+    saveData("italy_ipv_daily",[]);saveData("italy_ipv_daily_backup_v13",[]);
   }
   async function resetCloudStoreFromAdmin(){
-    if(role!=="admin"||!navigator.onLine)return false;
-    try{
-      // Puesta a cero real: borra el catálogo compartido y todas las ventas
-      // enviadas por vendedores. store_users se conserva para no romper los roles.
-      await cloudRequest('/rest/v1/seller_sales?id=neq.null',{method:'DELETE',headers:{Prefer:'return=minimal'}});
-      await cloudRequest('/rest/v1/products?id=neq.null',{method:'DELETE',headers:{Prefer:'return=minimal'}});
-      return true;
-    }catch(e){console.warn("No se pudo limpiar la tienda compartida",e);return false}
+    // La puesta a cero de esta versión solo afecta al teléfono. No toca Supabase.
+    return true;
   }
 
   window.initialStoreSetupAdmin=async function(){
     if(role!=="admin")return alert("Solo el administrador puede preparar la tienda.");
-    if(!confirm("⚠️ PUESTA A CERO TOTAL\n\nSe eliminarán del administrador Y de la sincronización compartida:\n• productos\n• ventas del vendedor\n• ventas locales\n• movimientos IPV\n• capital y movimientos de caja\n\nLos usuarios/roles se conservarán.\n\n¿Continuar?"))return;
-    if(!navigator.onLine)return alert("Para hacer una puesta a cero sincronizada debes tener Internet. Así podremos borrar también los datos compartidos del vendedor.");
-    const cloudOk=await resetCloudStoreFromAdmin();
-    if(!cloudOk)return alert("No se pudo completar la puesta a cero en la nube. No se borraron los datos locales para evitar que queden desincronizados.");
-
+    if(!confirm("⚠️ INICIO DESDE CERO EN ESTE TELÉFONO\n\nSe borrarán SOLO los datos locales de esta tienda: productos, ventas, movimientos, historial IPV, capital y colas pendientes. Supabase NO se modificará.\n\nEsta acción no se puede deshacer. ¿Continuar?"))return;
     clearLocalOperationalData();
-    products=[];
-    cart=[];
+    products=[];cart=[];
     saveData("italy_products",products);
     renderAllClean();
-    alert("Puesta a cero completada. El administrador y la sincronización del vendedor quedaron sin productos ni ventas anteriores.");
+    alert("Datos locales borrados. Ya puedes crear los productos desde cero. Supabase no se modificó.");
   };
   window.prepareInitialDevice=function(){
     if(!confirm("Se limpiarán ventas, movimientos, capital y colas antiguas de este teléfono. Los productos se conservarán. ¿Continuar?"))return;
     clearLocalOperationalData();renderAllClean();alert("Este teléfono quedó preparado para comenzar.");
   };
-  window.importLocalProductsToCloud=async function(){if(role!=="admin"){alert("Solo el administrador puede sincronizar productos.");return}if(!navigator.onLine){alert("Conéctate a Internet para sincronizar productos.");return}await syncAdminProducts();alert("Productos enviados a la nube.")};
+  window.importLocalProductsToCloud=async function(){alert("La sincronización con Supabase está pausada por seguridad. Los productos permanecen guardados localmente. Exporta un respaldo JSON hasta que configuremos la copia en la nube.")};
+
+  /* ---------- Respaldo local exportable y restauración confirmada ---------- */
+  window.exportLocalStoreBackup=function(){
+    try{
+      const data={format:"italy-maudim-local-backup",version:1,createdAt:new Date().toISOString(),keys:{}};
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k && (k.startsWith("italy_")||k==="italy_role_clean_v1"||k==="italy_device_clean_v1"||k==="italy_seller_sale_queue_v1"||k==="italy_applied_seller_sales_v1"))data.keys[k]=localStorage.getItem(k);
+      }
+      const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="italy-maudim-respaldo-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+      alert("Respaldo local exportado. Guarda el archivo fuera del teléfono.");
+    }catch(e){alert("No se pudo exportar el respaldo: "+e.message)}
+  };
+  window.importLocalStoreBackup=function(event){
+    const file=event?.target?.files?.[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+      try{
+        const data=JSON.parse(String(reader.result||""));
+        if(data.format!=="italy-maudim-local-backup"||!data.keys||typeof data.keys!=="object")throw new Error("El archivo no es un respaldo válido de Italy Mau.dim Tienda.");
+        if(!confirm("Se reemplazarán los datos locales de esta tienda por la copia del "+String(data.createdAt||"fecha desconocida")+". Esta acción no se puede deshacer. ¿Restaurar?"))return;
+        for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&(k.startsWith("italy_")||k==="italy_role_clean_v1"||k==="italy_device_clean_v1"||k==="italy_seller_sale_queue_v1"||k==="italy_applied_seller_sales_v1"))localStorage.removeItem(k)}
+        for(const [k,v] of Object.entries(data.keys)){if(typeof v==="string"&&(k.startsWith("italy_")||k==="italy_role_clean_v1"||k==="italy_device_clean_v1"||k==="italy_seller_sale_queue_v1"||k==="italy_applied_seller_sales_v1"))localStorage.setItem(k,v)}
+        alert("Respaldo restaurado. La aplicación se recargará.");location.reload();
+      }catch(e){alert("No se pudo restaurar el respaldo: "+e.message)}
+      finally{if(event?.target)event.target.value=""}
+    };
+    reader.readAsText(file);
+  };
 
   /* ---------- Productos ---------- */
   window.saveProduct=function(){
@@ -1941,6 +1962,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 
   /* ---------- Supabase REST: no dependemos de supabase-js ---------- */
   async function cloudRequest(path,options={}){
+    const method=String(options.method||"GET").toUpperCase();
+    if(LOCAL_FIRST_SAFE_MODE && !["GET","HEAD"].includes(method)) throw new Error("Modo local seguro: escritura en Supabase bloqueada hasta configurar copias de seguridad seguras.");
     const headers={apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json",...(options.headers||{})};
     const r=await fetch(SUPABASE_URL+path,{...options,headers});
     const text=await r.text();
@@ -1949,6 +1972,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     return data;
   }
   async function syncSellerCatalog(){
+    // Nunca reemplazar el catálogo local con una respuesta remota.
+    if(LOCAL_FIRST_SAFE_MODE)return false;
     if(role!=="seller"||!navigator.onLine)return false;
     try{
       const rows=await cloudRequest('/rest/v1/products?select=*&order=created_at.asc');
@@ -1988,6 +2013,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     }catch(e){console.warn("No se pudo actualizar el catálogo del vendedor",e);return false}
   }
   async function syncSellerQueue(){
+    // Las ventas permanecen guardadas localmente mientras se configura la copia segura.
+    if(LOCAL_FIRST_SAFE_MODE)return;
     if(role!=="seller"||!navigator.onLine)return;
     const q=queueSales();if(!q.length)return;
     for(const item of q.slice()){
@@ -2022,6 +2049,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     }catch(e){console.warn("No se pudieron recibir ventas del vendedor",e)}
   }
   async function syncAdminProducts(){
+    // Desactivado a propósito: evita borrar o sobrescribir productos en Supabase.
+    if(LOCAL_FIRST_SAFE_MODE)return false;
     if(role!=="admin"||!navigator.onLine)return false;
     try{
       const payload=(Array.isArray(products)?products:[]).map(p=>({id:p.id,name:p.name,price:num(p.price),cost:num(p.cost),stock:Math.max(0,Math.floor(num(p.stock))),unit:p.unit||"unidad",icon:p.icon||"",ipv_initial_stock:num(p.ipvInitialStock),ipv_entries:num(p.ipvEntries),ipv_sales:num(p.ipvSales),ipv_other_exits:num(p.ipvOtherExits)}));
@@ -2048,7 +2077,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   }
   let lastSyncOk=true;
   async function syncNow(){
-    // Durante la etapa de reparación solo se ejecuta la sincronización administrativa.
+    // La tienda trabaja localmente. No sincronizar hasta instalar el sistema de respaldo seguro.
+    if(LOCAL_FIRST_SAFE_MODE){lastSyncOk=false;updateSyncStatus();return false;}
     if(role!=="admin")return false;
     if(syncBusy)return lastSyncOk;syncBusy=true;let ok=true;
     try{
@@ -2065,6 +2095,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     const q=queueSales().length;
     if(!navigator.onLine){el.className="offline-status offline";el.textContent=role==="seller"?(q?`📴 Sin Internet · ${q} venta pendiente`:"📴 Sin Internet · Venta local") : "📴 Sin Internet · Datos locales"}
     else if(q){el.className="offline-status pending";el.textContent=`🔄 ${q} venta pendiente de sincronización`}
+    else if(LOCAL_FIRST_SAFE_MODE){el.className="offline-status pending";el.textContent="🔒 Datos locales · Copia en Supabase pausada por seguridad"}
     else if(!lastSyncOk){el.className="offline-status pending";el.textContent="⚠️ Sincronización pendiente"}
     else{el.className="offline-status";el.textContent="☁️ Sincronizado"}
   }
