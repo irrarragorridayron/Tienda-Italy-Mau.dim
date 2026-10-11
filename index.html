@@ -2356,16 +2356,39 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   }
 
   function ensureInventoryAuditTool(){
-    if(role!=="admin"||document.getElementById("inventoryAuditCard"))return;
-    const anchor=document.getElementById("adminToolsCard")||document.querySelector("main");if(!anchor)return;
-    const card=document.createElement("div");card.id="inventoryAuditCard";card.className="card";card.style.marginTop="12px";
-    card.innerHTML=`<h3 style="margin-top:0">🔎 Auditoría del inventario</h3><p class="subtitle">Comprobar qué cambió desde el IPV del 27/09/2026 sin modificar los datos.</p><button type="button" class="secondary" id="runInventoryAuditBtn" style="width:100%">🔎 Auditar inventario desde el día 27</button><div id="inventoryAuditResults" style="margin-top:10px"></div>`;
-    anchor.parentNode?.insertBefore(card,anchor.nextSibling);
-    document.getElementById("runInventoryAuditBtn")?.addEventListener("click",()=>renderInventoryAudit(auditInventoryFromDate("2026-09-27")));
-    const deep=document.createElement("div");deep.id="inventoryForensicAudit3Card";deep.className="card";deep.style.marginTop="12px";
-    deep.innerHTML=`<h3 style="margin-top:0">🧬 Auditoría 3 — rastreo forense</h3><p class="subtitle">Reconstruye la continuidad de cada producto desde el IPV del 27: IDs, IPV posteriores, movimientos, ventas y, si hay Internet, comparación de solo lectura con Supabase.</p><button type="button" class="secondary" id="runForensicAudit3Btn" style="width:100%">🧬 Ejecutar Auditoría 3</button><div id="inventoryForensicAudit3Results" style="margin-top:10px"></div>`;
-    card.parentNode?.insertBefore(deep,card.nextSibling);
-    document.getElementById("runForensicAudit3Btn")?.addEventListener("click",()=>window.runForensicInventoryAudit3());
+    if(role!=="admin")return;
+
+    // Las auditorías pertenecen a Inventario. No dependemos de Configuración/Productos.
+    const inventoryScreen=document.getElementById("screen-inventory");
+    if(!inventoryScreen)return;
+
+    let card=document.getElementById("inventoryAuditCard");
+    if(!card){
+      card=document.createElement("div");
+      card.id="inventoryAuditCard";
+      card.className="card";
+      card.style.marginTop="12px";
+      card.innerHTML=`<h3 style="margin-top:0">🔎 Auditoría del inventario</h3><p class="subtitle">Comprobar qué cambió desde el IPV del 27/09/2026 sin modificar los datos.</p><button type="button" class="secondary" id="runInventoryAuditBtn" style="width:100%">🔎 Auditar inventario desde el día 27</button><div id="inventoryAuditResults" style="margin-top:10px"></div>`;
+      inventoryScreen.insertBefore(card,inventoryScreen.firstElementChild?.nextSibling||inventoryScreen.firstChild);
+      document.getElementById("runInventoryAuditBtn")?.addEventListener("click",()=>renderInventoryAudit(auditInventoryFromDate("2026-09-27")));
+    }
+
+    let deep=document.getElementById("inventoryForensicAudit3Card");
+    if(!deep){
+      deep=document.createElement("div");
+      deep.id="inventoryForensicAudit3Card";
+      deep.className="card";
+      deep.style.marginTop="12px";
+      deep.innerHTML=`<h3 style="margin-top:0">🧬 Auditoría 3 — rastreo forense</h3><p class="subtitle">Reconstruye la continuidad de cada producto desde el IPV del 27: IDs, IPV posteriores, movimientos, ventas y, si hay Internet, comparación de solo lectura con Supabase.</p><button type="button" class="secondary" id="runForensicAudit3Btn" style="width:100%">🧬 Ejecutar Auditoría 3</button><div id="inventoryForensicAudit3Results" style="margin-top:10px"></div>`;
+    }
+    // Si una versión previa dejó la tarjeta en otro lugar, la trasladamos a Inventario.
+    if(deep.parentElement!==inventoryScreen) inventoryScreen.appendChild(deep);
+    deep.style.display="block";
+    const run3=document.getElementById("runForensicAudit3Btn");
+    if(run3) run3.onclick=()=>{
+      if(typeof window.runForensicInventoryAudit3==="function") window.runForensicInventoryAudit3();
+      else {const box=document.getElementById("inventoryForensicAudit3Results");if(box)box.innerHTML='<div class="hint">La función de Auditoría 3 no se cargó. Recarga el archivo actualizado.</div>';}
+    };
   }
 
   /* ---------- Navegación protegida ---------- */
@@ -2389,6 +2412,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   ensureRoleBar();
   configureNavigation();
   renderAllClean();
+  // Garantiza que las herramientas de auditoría queden visibles en Inventario.
+  ensureInventoryAuditTool();
   if(navigator.onLine)syncNow();
   window.addEventListener("online",()=>{clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,500);});
   window.addEventListener("offline",updateSyncStatus);
