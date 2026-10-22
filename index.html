@@ -1015,7 +1015,7 @@ function getProduct(id){return products.find(p=>p.id===id)}
 function money(v){return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(v)||0)}
 function esc(v){return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
 
-let pendingProductPhoto="";
+var pendingProductPhoto="";
 function prepareProductPhoto(input){
   const file=input?.files?.[0];
   const preview=document.getElementById("productPhotoPreview");
@@ -2491,7 +2491,26 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
       const modal = document.getElementById("productModal");
       if (!modal) throw new Error("No se encontró la ventana de alta de productos.");
       if (typeof window.openProductModal === "function") {
-        window.openProductModal(id == null ? null : id);
+        try {
+          window.openProductModal(id == null ? null : id);
+        } catch (modalError) {
+          console.error("Falló el formulario normal; se abrirá el formulario de respaldo:", modalError);
+          const fields = {
+            editingProductId: id || "",
+            productName: "",
+            productPrice: "",
+            productCost: "",
+            productStock: "0",
+            productUnit: "unidad"
+          };
+          Object.entries(fields).forEach(([key, value]) => {
+            const el = document.getElementById(key);
+            if (el) el.value = value;
+          });
+          const title = document.getElementById("productModalTitle");
+          if (title) title.textContent = id ? "Editar producto" : "Nuevo producto";
+          modal.classList.add("show");
+        }
       } else {
         const fields = {
           editingProductId: id || "",
