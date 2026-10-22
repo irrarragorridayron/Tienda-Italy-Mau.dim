@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#080808">
-<meta name="app-version" content="13">
+<meta name="app-version" content="14">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -655,7 +655,7 @@ main{max-width:1120px}
 </style>
 </head>
 <body>
-<div id="offlineStatus" class="offline-status" style="display:none">☁️ Conectado</div>
+<div id="offlineStatus" class="offline-status" >🔒 Datos locales</div>
 
 <header class="brand-header">
   <img class="brand-logo" src="./assets/logo-horizontal.png" alt="Italy Mau.dim Tienda">
@@ -703,7 +703,7 @@ main{max-width:1120px}
 
   <h3 class="dashboard-section-title">Herramientas de la tienda</h3>
   <div class="dashboard-grid">
-    <button class="dashboard-card pink-accent" onclick="openProductModal()">
+    <button class="dashboard-card pink-accent" type="button" onclick="window.openProductModalSafe()">
       <img src="./assets/icon-agregar.png" alt="">
       <strong>Agregar producto</strong><small>Alta rápida</small>
     </button>
@@ -819,7 +819,7 @@ main{max-width:1120px}
 <section id="screen-products" class="screen">
 <h2 class="section-title">Productos</h2>
 <p class="subtitle">Administra los productos de tu tienda.</p>
-<button id="adminAddProductBtn" class="primary" onclick="openProductModal()">Agregar producto</button>
+<button id="adminAddProductBtn" class="primary" type="button" onclick="window.openProductModalSafe()">Agregar producto</button>
 
 <div id="adminToolsCard" class="card" style="margin-top:14px;display:none">
   <h3 style="margin-top:0">Inicio desde cero (solo este teléfono)</h3>
@@ -856,7 +856,7 @@ main{max-width:1120px}
     <div class="more-grid">
       <button class="more-item" onclick="closeMoreMenu();showScreen('products')"><img src="./assets/icon-productos.png" alt=""><strong>Productos</strong></button>
       <button class="more-item" onclick="closeMoreMenu();showScreen('sales')"><img src="./assets/icon-reportes.png" alt=""><strong>Reportes / ventas</strong></button>
-      <button class="more-item" onclick="closeMoreMenu();openProductModal()"><img src="./assets/icon-agregar.png" alt=""><strong>Agregar producto</strong></button>
+      <button class="more-item" type="button" onclick="closeMoreMenu();window.openProductModalSafe()"><img src="./assets/icon-agregar.png" alt=""><strong>Agregar producto</strong></button>
       <button class="more-item" onclick="closeMoreMenu();showScreen('sales');setTimeout(()=>document.getElementById('capitalInitialInput')?.scrollIntoView({behavior:'smooth',block:'center'}),150)"><img src="./assets/icon-caja.png" alt=""><strong>Caja y capital</strong></button>
       <button class="more-item" onclick="closeMoreMenu();showScreen('inventory');setTimeout(()=>document.getElementById('dailyIPVContainer')?.scrollIntoView({behavior:'smooth',block:'center'}),150)"><img src="./assets/icon-historial.png" alt=""><strong>Historial IPV</strong></button>
       <button class="more-item" onclick="closeMoreMenu();showScreen('products');setTimeout(()=>document.getElementById('adminToolsCard')?.scrollIntoView({behavior:'smooth',block:'center'}),150)"><img src="./assets/icon-configuracion.png" alt=""><strong>Configuración</strong></button>
@@ -885,7 +885,7 @@ main{max-width:1120px}
 <div><label>Unidad</label><select id="productUnit"><option value="unidad">Unidad</option><option value="libra">Libra</option><option value="kg">Kilogramo</option></select></div>
 </div>
 <div class="hint">El costo es opcional. Puedes modificarlo cada vez que cambie el costo de compra.</div>
-<button class="primary" onclick="saveProduct()">💾 Guardar producto</button>
+<button class="primary" type="button" onclick="window.saveProductSafe()">💾 Guardar producto</button>
 </div>
 </div>
 
@@ -1064,6 +1064,23 @@ if(name==="sales")renderSales();
 if(name==="products")renderProductsAdmin();
 window.scrollTo(0,0)
 }
+
+// Menú "Más": estas funciones faltaban en el archivo recibido y hacían
+// que los botones que las llamaban se detuvieran antes de navegar.
+window.showMoreMenu=function(){
+  const modal=document.getElementById("moreModal");
+  if(modal)modal.classList.add("show");
+};
+window.closeMoreMenu=function(){
+  const modal=document.getElementById("moreModal");
+  if(modal)modal.classList.remove("show");
+};
+(function(){
+  const modal=document.getElementById("moreModal");
+  if(modal){
+    modal.addEventListener("click",function(e){if(e.target===modal)window.closeMoreMenu();});
+  }
+})();
 
 function productHasPhoto(p){
   const v=String(p?.icon||"").trim();
@@ -1512,7 +1529,7 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 rebuildIPVHistoryIfMissing();
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=13").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=14").catch(e=>console.error(e)));}</script>
 
 
 <script>
@@ -2465,5 +2482,63 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
 @media(max-width:599px){#roleBarClean{top:44px;right:7px}}
 </style>
 
+<script>
+/* Puente de compatibilidad para Alta rápida y Guardar producto.
+   Mantiene el motor local actual y muestra el error real si algo falla. */
+(function () {
+  window.openProductModalSafe = function (id) {
+    try {
+      const modal = document.getElementById("productModal");
+      if (!modal) throw new Error("No se encontró la ventana de alta de productos.");
+      if (typeof window.openProductModal === "function") {
+        window.openProductModal(id == null ? null : id);
+      } else {
+        const fields = {
+          editingProductId: id || "",
+          productName: "",
+          productPrice: "",
+          productCost: "",
+          productStock: "0",
+          productUnit: "unidad"
+        };
+        Object.entries(fields).forEach(([key, value]) => {
+          const el = document.getElementById(key);
+          if (el) el.value = value;
+        });
+        const title = document.getElementById("productModalTitle");
+        if (title) title.textContent = id ? "Editar producto" : "Nuevo producto";
+        modal.classList.add("show");
+      }
+      modal.classList.add("show");
+      modal.style.display = "flex";
+      setTimeout(() => document.getElementById(id ? "productName" : "productName")?.focus(), 100);
+    } catch (e) {
+      console.error("Error en Alta rápida:", e);
+      alert("No se pudo abrir Alta rápida: " + (e && e.message ? e.message : e));
+    }
+  };
+
+  window.saveProductSafe = function () {
+    try {
+      const name = document.getElementById("productName")?.value.trim();
+      const priceText = document.getElementById("productPrice")?.value;
+      const costText = document.getElementById("productCost")?.value;
+      const stockText = document.getElementById("productStock")?.value;
+      const price = Number(priceText);
+      const cost = costText === "" ? 0 : Number(costText);
+      const stock = Number(stockText);
+      if (!name) { alert("Escribe el nombre del producto."); document.getElementById("productName")?.focus(); return; }
+      if (priceText === "" || !Number.isFinite(price) || price < 0) { alert("Introduce un precio de venta válido."); document.getElementById("productPrice")?.focus(); return; }
+      if (costText !== "" && (!Number.isFinite(cost) || cost < 0)) { alert("Introduce un costo válido o déjalo vacío."); document.getElementById("productCost")?.focus(); return; }
+      if (!Number.isFinite(stock) || stock < 0) { alert("Introduce una existencia válida."); document.getElementById("productStock")?.focus(); return; }
+      if (typeof window.saveProduct !== "function") throw new Error("La función para guardar productos no se cargó.");
+      window.saveProduct();
+    } catch (e) {
+      console.error("Error al guardar producto:", e);
+      alert("No se pudo guardar el producto: " + (e && e.message ? e.message : e));
+    }
+  };
+})();
+</script>
 </body>
 </html>
