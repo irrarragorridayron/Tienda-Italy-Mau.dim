@@ -1,4 +1,4 @@
-const CACHE_NAME = "italy-mau-tienda-v14-local-safe";
+const CACHE_NAME = "italy-mau-tienda-v15-offline";
 
 const APP_SHELL = [
   "./",
@@ -14,7 +14,19 @@ const APP_SHELL = [
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL))
+      .then(async cache => {
+        for (const file of APP_SHELL) {
+          try {
+            await cache.add(file);
+          } catch (error) {
+            console.warn(
+              "No se pudo guardar en caché:",
+              file,
+              error
+            );
+          }
+        }
+      })
       .then(() => self.skipWaiting())
   );
 });
@@ -38,27 +50,28 @@ self.addEventListener("activate", event => {
   );
 });
 
-// FUNCIONAMIENTO OFFLINE
+// SOLICITUDES Y FUNCIONAMIENTO OFFLINE
 self.addEventListener("fetch", event => {
   const request = event.request;
 
-  // Solo procesar solicitudes GET
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
 
-  // No interceptar solicitudes a otros dominios
+  // No interceptar peticiones a otros dominios.
   if (url.origin !== self.location.origin) return;
 
-  // Páginas principales: intentar conexión y recurrir a la caché
+  // Página principal: primero red y luego caché.
   if (
     request.mode === "navigate" ||
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/")
   ) {
     event.respondWith(
-      fetch(request)
-        .then(response => {
+      (async () => {
+        try {
+          const response = await fetch(request);
+
           if (response && response.ok) {
             const copy = response.clone();
 
@@ -71,40 +84,56 @@ self.addEventListener("fetch", event => {
           }
 
           return response;
-        })
-        .catch(async () => {
+        } catch (error) {
           const cached =
             await caches.match(request) ||
             await caches.match("./index.html") ||
             await caches.match("./");
 
-          return cached || Response.error();
-        })
+          return cached || new Response(
+            "La aplicación no está disponible en caché. Conéctate una vez a Internet para cargarla.",
+            {
+              status: 503,
+              headers: {
+                "Content-Type": "text/plain; charset=utf-8"
+              }
+            }
+          );
+        }
+      })()
     );
 
     return;
   }
 
-  // Otros archivos: usar caché y descargar si no existen
+  // Otros archivos: caché primero y red como alternativa.
   event.respondWith(
-    caches.match(request)
-      .then(cached => {
-        if (cached) return cached;
+    (async () => {
+      const cached = await caches.match(request);
 
-        return fetch(request)
-          .then(response => {
-            if (response && response.ok) {
-              const copy = response.clone();
+      if (cached) return cached;
 
-              event.waitUntil(
-                caches.open(CACHE_NAME)
-                  .then(cache => cache.put(request, copy))
-              );
-            }
+      try {
+        const response = await fetch(request);
 
-            return response;
-          })
-          .catch(() => Response.error());
-      })
+        if (response && response.ok) {
+          const copy = response.clone();
+
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(request, copy))
+          );
+        }
+
+        return response;
+      } catch (error) {
+        return new Response("Recurso no disponible sin conexión.", {
+          status: 503,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8"
+          }
+        });
+      }
+    })()
   );
 });
