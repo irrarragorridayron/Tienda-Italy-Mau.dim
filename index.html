@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#080808">
-<meta name="app-version" content="14">
+<meta name="app-version" content="15-offline-admin">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -823,7 +823,7 @@ main{max-width:1120px}
 
 <div id="adminToolsCard" class="card" style="margin-top:14px;display:none">
   <h3 style="margin-top:0">Inicio desde cero (solo este teléfono)</h3>
-  <div class="hint">Borra los productos, ventas, movimientos, capital e historial IPV guardados en este teléfono. No modifica Supabase. Úsala una sola vez antes de comenzar.</div>
+  <div class="hint">Borra los productos, ventas, movimientos, capital e historial IPV guardados en este teléfono. No utiliza servicios en la nube. Úsala una sola vez antes de comenzar.</div>
   <button class="danger" style="width:100%;padding:14px" onclick="initialStoreSetupAdmin()">Borrar datos locales y comenzar</button>
 </div>
 <div id="initialDeviceCard" class="card" style="margin-top:14px">
@@ -832,7 +832,7 @@ main{max-width:1120px}
   <button class="secondary" style="width:100%;padding:14px" onclick="prepareInitialDevice()">Preparar este teléfono para comenzar</button>
   <hr style="border-color:#ffffff18;margin:16px 0">
   <h3>Respaldo local</h3>
-  <div class="hint">Exporta un archivo de respaldo para guardarlo fuera del teléfono. La copia automática en Supabase está pausada hasta configurar su almacenamiento seguro.</div>
+  <div class="hint">Exporta un archivo de respaldo para guardarlo fuera del teléfono. La aplicación guarda los datos en este teléfono. Exporta respaldos periódicos y guárdalos fuera del dispositivo.</div>
   <button class="secondary" style="width:100%;padding:12px" onclick="exportLocalStoreBackup()">Exportar respaldo JSON</button>
   <input id="localBackupFileInput" type="file" accept="application/json,.json" style="display:none" onchange="importLocalStoreBackup(event)">
   <button class="secondary" style="width:100%;padding:12px;margin-top:8px" onclick="document.getElementById('localBackupFileInput').click()">Restaurar respaldo JSON</button>
@@ -1381,10 +1381,29 @@ function generateDailyIPV(){
 }
 function renderDailyIPV(report){
   const c=document.getElementById("dailyIPVContainer");
+  if(!c)return;
   if(!report){c.innerHTML='<div class="empty">Selecciona una fecha y pulsa “Generar IPV del día”.</div>';return}
-  const rows=report.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${r.initial}</td><td>${r.entries}</td><td>${r.sales}</td><td>${r.otherExits}</td><td><strong>${r.existence}</strong></td><td>${r.priceMixed?"Mixto":money(r.price)}</td><td class="ipv-amount">${money(r.amount)}</td></tr>`).join("");
-  c.innerHTML=`<div class="hint"><strong>IPV del ${formatDateKey(report.date)}</strong><br>Ventas: ${report.salesCount} · Total vendido: ${money(report.salesTotal)} · Entradas: ${report.entries} · Otras salidas: ${report.otherExits}</div><div class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead><tbody>${rows}</tbody></table></div><div class="card ipv-total-card" style="margin-top:10px;margin-bottom:0"><div class="ipv-total-label">VALOR DEL INVENTARIO AL CIERRE DEL DÍA</div><div class="ipv-grand-total">${money(report.total)}</div></div>`;
+  const rows=(report.rows||[]).map((r,i)=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td><input type="number" min="0" step="1" data-ipv-row="${i}" data-ipv-field="initial" value="${Number(r.initial)||0}" style="width:72px"></td><td><input type="number" min="0" step="1" data-ipv-row="${i}" data-ipv-field="entries" value="${Number(r.entries)||0}" style="width:72px"></td><td><input type="number" min="0" step="1" data-ipv-row="${i}" data-ipv-field="sales" value="${Number(r.sales)||0}" style="width:72px"></td><td><input type="number" min="0" step="1" data-ipv-row="${i}" data-ipv-field="otherExits" value="${Number(r.otherExits)||0}" style="width:72px"></td><td><input type="number" min="0" step="1" data-ipv-row="${i}" data-ipv-field="existence" value="${Number(r.existence)||0}" style="width:72px"></td><td><input type="number" min="0" step="0.01" data-ipv-row="${i}" data-ipv-field="price" value="${Number(r.price)||0}" style="width:90px"></td><td class="ipv-amount">${money(Number(r.existence||0)*Number(r.price||0))}</td></tr>`).join("");
+  c.innerHTML=`<div class="hint"><strong>IPV del ${formatDateKey(report.date)}</strong><br>Ventas: ${report.salesCount||0} · Total vendido: ${money(report.salesTotal||0)}<br>Los campos del informe se pueden modificar manualmente. Pulsa Guardar cambios para conservarlos en este teléfono.</div><div class="ipv-table-wrap"><table class="ipv-table"><thead><tr><th>Producto</th><th>U/M</th><th>Inv. inicial</th><th>Entradas</th><th>Ventas</th><th>Otras salidas</th><th>Existencia</th><th>Precio venta</th><th>Importe IPV</th></tr></thead><tbody>${rows}</tbody></table></div><div class="card ipv-total-card" style="margin-top:10px;margin-bottom:0"><div class="ipv-total-label">VALOR DEL INVENTARIO</div><div id="ipvManualTotal" class="ipv-grand-total">${money((report.rows||[]).reduce((a,r)=>a+(Number(r.existence)||0)*(Number(r.price)||0),0))}</div></div><button class="primary" style="width:100%;margin-top:12px" onclick="saveManualIPVChanges('${report.date}')">💾 Guardar cambios del IPV</button>`;
 }
+window.saveManualIPVChanges=function(dateKey){
+  const report=ipvDailyReports.find(r=>r.date===dateKey);
+  const c=document.getElementById("dailyIPVContainer");
+  if(!report||!c)return;
+  c.querySelectorAll("[data-ipv-row]").forEach(input=>{
+    const i=Number(input.dataset.ipvRow),field=input.dataset.ipvField;
+    if(!report.rows[i])return;
+    const n=Number(input.value);
+    if(Number.isFinite(n)&&n>=0)report.rows[i][field]=field==="price"?n:Math.floor(n);
+  });
+  report.rows.forEach(r=>{r.amount=(Number(r.existence)||0)*(Number(r.price)||0)});
+  report.total=report.rows.reduce((a,r)=>a+(Number(r.amount)||0),0);
+  report.manualEditedAt=new Date().toISOString();
+  saveData("italy_ipv_daily",ipvDailyReports);
+  renderDailyIPV(report);renderIPVDailyHistory();
+  alert("IPV guardado localmente en este teléfono.");
+};
+
 function showTodayIPV(){
   const today=localDateKey();
   document.getElementById("ipvReportDate").value=today;
@@ -1529,7 +1548,7 @@ saveData("italy_products",products);renderProductsAdmin();renderSaleProducts();r
 rebuildIPVHistoryIfMissing();
 document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts();renderCart();renderInventory();renderSales();renderProductsAdmin();renderIPVDailyHistory();renderCapital();
 </script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=14").catch(e=>console.error(e)));}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=15").catch(e=>console.error(e)));}</script>
 
 
 <script>
@@ -1538,14 +1557,11 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
    - Un solo cálculo de ganancias.
    - Un solo cálculo de caja.
    - Un solo render de productos/IPV/ventas.
-   - Vendedor offline + sincronización por seller_sales.
-   - Administrador offline + puente Supabase cuando hay Internet.
+   - Aplicación local sin servicios externos.
    ================================================================ */
 (function(){
   "use strict";
 
-  const SUPABASE_URL="https://nnqthpdjbdqrdbodzwzf.supabase.co";
-  const SUPABASE_ANON_KEY="sb_publishable_nEMRdAA1nw7yEyqzz7aKzA_J1WTDVMC";
   const ROLE_KEY="italy_role_clean_v1";
   const DEVICE_KEY="italy_device_clean_v1";
   const APPLIED_SELLER_KEY="italy_applied_seller_sales_v1";
@@ -1553,7 +1569,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   // Modo local seguro: la nube no puede modificar ni borrar datos de este teléfono.
   const LOCAL_FIRST_SAFE_MODE=true;
   // MODO TEMPORAL DE TRABAJO: solo Administrador.
-  // El código del vendedor se conserva intacto para reactivarlo más adelante.
+  // El rol está fijado en administrador.
   let role="admin";
   localStorage.setItem(ROLE_KEY,"admin");
   let deviceId=localStorage.getItem(DEVICE_KEY);
@@ -1758,7 +1774,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     const q=queueSales();
     if(!q.some(x=>x.localId===sale.id))q.push({localId:sale.id,deviceId,sellerName:"Vendedor",saleNumber:sale.saleNumber,total:totalSale(sale),payment_method:sale.payment,sale_date:sale.date,items:sale.items});
     saveQueue(q);updateSyncStatus();
-    if(navigator.onLine)syncNow();
+    updateSyncStatus();
   }
 
   /* ---------- Caja/capital ---------- */
@@ -1841,7 +1857,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
       }
     }
     saveData("italy_products",products);saveData("italy_ipv_movements",ipvMovements);closeIPVMovementModal();renderAllClean();
-    if(role==="admin"&&navigator.onLine)syncAdminProducts();
+
   };
 
   /* ---------- Puesta a cero / herramientas antiguas ---------- */
@@ -1851,24 +1867,24 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     saveData("italy_ipv_daily",[]);saveData("italy_ipv_daily_backup_v13",[]);
   }
   async function resetCloudStoreFromAdmin(){
-    // La puesta a cero de esta versión solo afecta al teléfono. No toca Supabase.
+    // La puesta a cero de esta versión solo afecta al teléfono. No toca este teléfono.
     return true;
   }
 
   window.initialStoreSetupAdmin=async function(){
     if(role!=="admin")return alert("Solo el administrador puede preparar la tienda.");
-    if(!confirm("⚠️ INICIO DESDE CERO EN ESTE TELÉFONO\n\nSe borrarán SOLO los datos locales de esta tienda: productos, ventas, movimientos, historial IPV, capital y colas pendientes. Supabase NO se modificará.\n\nEsta acción no se puede deshacer. ¿Continuar?"))return;
+    if(!confirm("⚠️ INICIO DESDE CERO EN ESTE TELÉFONO\n\nSe borrarán SOLO los datos locales de esta tienda: productos, ventas, movimientos, historial IPV, capital y colas pendientes. este teléfono NO se modificará.\n\nEsta acción no se puede deshacer. ¿Continuar?"))return;
     clearLocalOperationalData();
     products=[];cart=[];
     saveData("italy_products",products);
     renderAllClean();
-    alert("Datos locales borrados. Ya puedes crear los productos desde cero. Supabase no se modificó.");
+    alert("Datos locales borrados. Ya puedes crear los productos desde cero. este teléfono no se modificó.");
   };
   window.prepareInitialDevice=function(){
     if(!confirm("Se limpiarán ventas, movimientos, capital y colas antiguas de este teléfono. Los productos se conservarán. ¿Continuar?"))return;
     clearLocalOperationalData();renderAllClean();alert("Este teléfono quedó preparado para comenzar.");
   };
-  window.importLocalProductsToCloud=async function(){alert("La sincronización con Supabase está pausada por seguridad. Los productos permanecen guardados localmente. Exporta un respaldo JSON hasta que configuremos la copia en la nube.")};
+  window.importLocalProductsToCloud=async function(){alert("Esta versión no tiene sincronización en la nube. Los productos permanecen guardados localmente. Exporta un respaldo JSON para conservar una copia externa.")};
 
   /* ---------- Respaldo local exportable y restauración confirmada ---------- */
   window.exportLocalStoreBackup=function(){
@@ -1909,9 +1925,9 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     if(id){const p=getProduct(id);if(!p)return;p.name=name;p.price=price;p.cost=cost;p.stock=stock;p.unit=unit;if(typeof pendingProductPhoto!=="undefined"&&pendingProductPhoto)p.icon=pendingProductPhoto}
     else { const existing=products.find(p=>normalizeProductKey(p)===`${name.toLocaleLowerCase()}||${unit.toLocaleLowerCase()}`); if(existing){ existing.price=price;existing.cost=cost;existing.stock=stock;if(typeof pendingProductPhoto!=="undefined"&&pendingProductPhoto)existing.icon=pendingProductPhoto; } else products.push({id:generateUUID(),name,price,cost,stock,unit,icon:(typeof pendingProductPhoto!=="undefined"?pendingProductPhoto:"")||"",ipvInitialStock:stock,ipvEntries:0,ipvSales:0,ipvOtherExits:0}); }
     saveData("italy_products",products);if(typeof resetProductPhotoUI==="function")resetProductPhotoUI("");closeProductModal();renderAllClean();
-    if(role==="admin"&&navigator.onLine)syncAdminProducts();
+
   };
-  window.deleteProduct=function(id){const p=getProduct(id);if(!p)return;if(!confirm(`¿Eliminar "${p.name}"?`))return;products=products.filter(x=>x.id!==id);cart=cart.filter(x=>x.productId!==id);saveData("italy_products",products);renderAllClean();if(role==="admin"&&navigator.onLine)syncAdminProducts()};
+  window.deleteProduct=function(id){const p=getProduct(id);if(!p)return;if(!confirm(`¿Eliminar "${p.name}"?`))return;products=products.filter(x=>x.id!==id);cart=cart.filter(x=>x.productId!==id);saveData("italy_products",products);renderAllClean()};
 
   /* ---------- Vendedor: resumen ---------- */
   function ensureSellerScreen(){
@@ -1920,8 +1936,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     document.querySelector("main")?.appendChild(s);
   }
   function ensureRoleUI(){
-    let o=document.getElementById("roleOverlayClean");if(o)return;
-    o=document.createElement("div");o.id="roleOverlayClean";o.innerHTML=`<div class="role-box-v8"><div class="role-crown-v8">👑</div><h2>Italy Mau.dim</h2><p>Selecciona el modo de trabajo</p><button class="role-btn-v8 admin" onclick="selectRoleClean('admin')">👑 Administrador</button><button class="role-btn-v8 seller" onclick="selectRoleClean('seller')">🧑‍💼 Vendedor</button><div class="role-note-v8">No se requiere contraseña. El vendedor puede trabajar sin Internet; la conexión solo se usa para sincronizar.</div></div>`;document.body.appendChild(o);
+    document.getElementById("roleOverlayClean")?.remove();
   }
   function ensureRoleBar(){
     let b=document.getElementById("roleBarClean");
@@ -1946,16 +1961,13 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     configureNavigation();
   };
   function configureNavigation(){
-    ensureSellerScreen();ensureRoleBar();
-    const nav=[...document.querySelectorAll(".bottom-nav .nav-btn")];
-    if(role==="seller"){
-      nav.forEach((b,i)=>b.style.display=(i===1?"block":"none"));
-      let n=document.getElementById("sellerSummaryNavClean");if(!n){n=document.createElement("button");n.id="sellerSummaryNavClean";n.className="nav-btn";n.innerHTML='<img class="nav-icon-img" src="./assets/icon-reportes.png" alt="">Resumen';n.onclick=()=>showSellerScreen("summary");document.querySelector(".bottom-nav")?.appendChild(n)}
-      n.style.display="block";showSellerScreen("sale");
-    }else{
-      nav.forEach(b=>b.style.display="");document.getElementById("sellerSummaryNavClean")?.remove();
-      document.getElementById("screen-seller-summary")?.classList.remove("active");
-    }
+    role="admin";
+    localStorage.setItem(ROLE_KEY,"admin");
+    document.getElementById("roleOverlayClean")?.remove();
+    document.getElementById("sellerSummaryNavClean")?.remove();
+    document.getElementById("screen-seller-summary")?.remove();
+    document.querySelectorAll(".bottom-nav .nav-btn").forEach(b=>b.style.display="");
+    ensureRoleBar();
   }
   function showSellerScreen(which){
     document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
@@ -1977,17 +1989,11 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     const sc=document.getElementById("sellerSalesSummary");if(sc)sc.innerHTML=today.length?today.map(s=>`<div class="seller-sale-v8"><div><strong>${saleLabel(s)}</strong><small>${new Date(s.date).toLocaleTimeString()}</small></div><strong>${money(totalSale(s))}</strong></div>`).join(""):'<div class="empty">Todavía no hay ventas hoy.</div>';
   }
 
-  /* ---------- Supabase REST: no dependemos de supabase-js ---------- */
-  async function cloudRequest(path,options={}){
-    const method=String(options.method||"GET").toUpperCase();
-    if(LOCAL_FIRST_SAFE_MODE && !["GET","HEAD"].includes(method)) throw new Error("Modo local seguro: escritura en Supabase bloqueada hasta configurar copias de seguridad seguras.");
-    const headers={apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json",...(options.headers||{})};
-    const r=await fetch(SUPABASE_URL+path,{...options,headers});
-    const text=await r.text();
-    let data=null;try{data=text?JSON.parse(text):null}catch(e){data=text}
-    if(!r.ok)throw new Error((data&&data.message)||text||`HTTP ${r.status}`);
-    return data;
+  /* ---------- este teléfono REST: no dependemos de este teléfono-js ---------- */
+  async function cloudRequest(){
+    throw new Error("Esta versión funciona exclusivamente sin conexión y no utiliza servicios externos.");
   }
+
   async function syncSellerCatalog(){
     // Nunca reemplazar el catálogo local con una respuesta remota.
     if(LOCAL_FIRST_SAFE_MODE)return false;
@@ -2066,14 +2072,14 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
     }catch(e){console.warn("No se pudieron recibir ventas del vendedor",e)}
   }
   async function syncAdminProducts(){
-    // Desactivado a propósito: evita borrar o sobrescribir productos en Supabase.
+    // Desactivado a propósito: evita borrar o sobrescribir productos en este teléfono.
     if(LOCAL_FIRST_SAFE_MODE)return false;
     if(role!=="admin"||!navigator.onLine)return false;
     try{
       const payload=(Array.isArray(products)?products:[]).map(p=>({id:p.id,name:p.name,price:num(p.price),cost:num(p.cost),stock:Math.max(0,Math.floor(num(p.stock))),unit:p.unit||"unidad",icon:p.icon||"",ipv_initial_stock:num(p.ipvInitialStock),ipv_entries:num(p.ipvEntries),ipv_sales:num(p.ipvSales),ipv_other_exits:num(p.ipvOtherExits)}));
 
       // El catálogo remoto debe reflejar exactamente al administrador.
-      // Si el administrador no tiene productos, también se vacía Supabase.
+      // Si el administrador no tiene productos, también se vacía este teléfono.
       if(!payload.length){
         await cloudRequest('/rest/v1/products?id=neq.null',{method:'DELETE',headers:{Prefer:'return=minimal'}});
         return true;
@@ -2094,27 +2100,17 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   }
   let lastSyncOk=true;
   async function syncNow(){
-    // La tienda trabaja localmente. No sincronizar hasta instalar el sistema de respaldo seguro.
-    if(LOCAL_FIRST_SAFE_MODE){lastSyncOk=false;updateSyncStatus();return false;}
-    if(role!=="admin")return false;
-    if(syncBusy)return lastSyncOk;syncBusy=true;let ok=true;
-    try{
-      const productsOk=await syncAdminProducts();
-      if(navigator.onLine&&!productsOk)ok=false;
-      lastSyncOk=ok;
-    }finally{syncBusy=false;updateSyncStatus()}
-    return lastSyncOk;
+    lastSyncOk=false;
+    updateSyncStatus();
+    return false;
   }
   window.syncNow=syncNow;
 
   function updateSyncStatus(){
-    const el=document.getElementById("offlineStatus");if(!el)return;
-    const q=queueSales().length;
-    if(!navigator.onLine){el.className="offline-status offline";el.textContent=role==="seller"?(q?`📴 Sin Internet · ${q} venta pendiente`:"📴 Sin Internet · Venta local") : "📴 Sin Internet · Datos locales"}
-    else if(q){el.className="offline-status pending";el.textContent=`🔄 ${q} venta pendiente de sincronización`}
-    else if(LOCAL_FIRST_SAFE_MODE){el.className="offline-status pending";el.textContent="🔒 Datos locales · Copia en Supabase pausada por seguridad"}
-    else if(!lastSyncOk){el.className="offline-status pending";el.textContent="⚠️ Sincronización pendiente"}
-    else{el.className="offline-status";el.textContent="☁️ Sincronizado"}
+    const el=document.getElementById("offlineStatus");
+    if(!el)return;
+    el.className="offline-status offline";
+    el.textContent="🔒 Datos guardados en este teléfono · Modo offline";
   }
   window.updateOfflineStatus=updateSyncStatus;
 
@@ -2134,19 +2130,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   }
 
   function ensureCloudImportButton(){
-    if(document.getElementById("importCloudBtn"))return;
-    const b=document.createElement("button");
-    b.id="importCloudBtn";
-    b.type="button";
-    b.style.display="none";
-    b.addEventListener("click",()=>{
-      if(role!=="admin"){alert("Solo el administrador puede importar/sincronizar la tienda.");return}
-      if(!navigator.onLine){alert("No hay Internet. Los datos locales siguen disponibles y se sincronizarán al volver la conexión.");return}
-      syncNow().then(ok=>alert(ok?"Sincronización completada correctamente.":"La sincronización quedó pendiente; revisa la conexión y vuelve a intentarlo."));
-    });
-    document.body.appendChild(b);
+    document.getElementById("importCloudBtn")?.remove();
   }
-
   function ensureAdminToolsVisibility(){
     const card=document.getElementById("adminToolsCard");
     if(card)card.style.display=role==="admin"?"block":"none";
@@ -2287,7 +2272,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   }
 
   /* ---------- Auditoría 3: forense de continuidad de IDs e historial IPV, SOLO LECTURA ----------
-     No modifica productos, inventario, ventas, movimientos, caja ni Supabase. */
+     No modifica productos, inventario, ventas, movimientos, caja ni este teléfono. */
   async function forensicInventoryAudit3(startKey="2026-09-27"){
     const reports=Array.isArray(ipvDailyReports)?ipvDailyReports:[];
     const current=Array.isArray(products)?products:[];
@@ -2354,7 +2339,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
       cases.push({key:k,name:cs[0]?.name||"Producto",unit:cs[0]?.unit||"unidad",status:"PRODUCTO ACTUAL SIN PRESENCIA EN IPV 27",baseIds:[],currentIds:cs.map(p=>String(p.id)),baseQty:0,currentQty:cs.reduce((a,p)=>a+num(p.stock),0),firstNew:null,lastOld:null,timeline:keyTimeline.get(k)||[],ids:cs.map(p=>({id:String(p.id),...historyForId(p.id)}))});
     }
 
-    // Comprobación opcional y de SOLO LECTURA contra Supabase: no escribe nada.
+    // Comprobación opcional y de SOLO LECTURA contra este teléfono: no escribe nada.
     let cloud=null;
     if(navigator.onLine&&typeof cloudRequest==="function"){
       try{
@@ -2380,8 +2365,8 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
       let cloudHtml='';
       if(Array.isArray(r.cloud)){
         const suspicious=r.cloud.filter(p=>!baseByIdSafe(r,p.id));
-        cloudHtml=`<div class="hint"><strong>Supabase (solo lectura):</strong> ${r.cloud.length} productos actuales en la nube. ${suspicious.length} no coinciden por ID con el IPV 27.</div>`;
-      }else if(r.cloud?.error) cloudHtml=`<div class="hint">⚠️ No se pudo consultar Supabase en esta auditoría: ${esc(r.cloud.error)}. El análisis local sí se completó.</div>`;
+        cloudHtml=`<div class="hint"><strong>este teléfono (solo lectura):</strong> ${r.cloud.length} productos actuales en la nube. ${suspicious.length} no coinciden por ID con el IPV 27.</div>`;
+      }else if(r.cloud?.error) cloudHtml=`<div class="hint">⚠️ No se pudo consultar este teléfono en esta auditoría: ${esc(r.cloud.error)}. El análisis local sí se completó.</div>`;
       box.innerHTML=`<div class="hint"><strong>Auditoría 3 — forense desde ${formatDateKey(r.startKey)}</strong><br>Base IPV: ${r.baseCount} filas · Productos actuales: ${r.currentCount} · Casos rastreados: ${r.cases.length}<br>IPV posteriores encontrados: ${r.dates.length}<br><small>Solo lectura. No guarda, corrige, fusiona, elimina ni sincroniza datos.</small></div>${cloudHtml}${rows||'<div class="hint">✅ No se detectaron cambios de ID entre el IPV 27 y el catálogo actual.</div>'}`;
     }catch(e){if(box)box.innerHTML=`<div class="hint">⚠️ Error en Auditoría 3: ${esc(e?.message||e)}<br>No se modificó ningún dato.</div>`;}
   };
@@ -2427,7 +2412,7 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
       deep.id="inventoryForensicAudit3Card";
       deep.className="card";
       deep.style.marginTop="12px";
-      deep.innerHTML=`<h3 style="margin-top:0">🧬 Auditoría 3 — rastreo forense</h3><p class="subtitle">Reconstruye la continuidad de cada producto desde el IPV del 27: IDs, IPV posteriores, movimientos, ventas y, si hay Internet, comparación de solo lectura con Supabase.</p><button type="button" class="secondary" id="runForensicAudit3Btn" style="width:100%">🧬 Ejecutar Auditoría 3</button><div id="inventoryForensicAudit3Results" style="margin-top:10px"></div>`;
+      deep.innerHTML=`<h3 style="margin-top:0">🧬 Auditoría 3 — rastreo forense</h3><p class="subtitle">Reconstruye la continuidad de cada producto desde el IPV del 27: IDs, IPV posteriores, movimientos, ventas y, si hay Internet, comparación de solo lectura con este teléfono.</p><button type="button" class="secondary" id="runForensicAudit3Btn" style="width:100%">🧬 Ejecutar Auditoría 3</button><div id="inventoryForensicAudit3Results" style="margin-top:10px"></div>`;
     }
     // Si una versión previa dejó la tarjeta en otro lugar, la trasladamos a Inventario.
     if(deep.parentElement!==inventoryScreen) inventoryScreen.appendChild(deep);
@@ -2462,10 +2447,10 @@ document.getElementById("ipvReportDate").value=localDateKey();renderSaleProducts
   renderAllClean();
   // Garantiza que las herramientas de auditoría queden visibles en Inventario.
   ensureInventoryAuditTool();
-  if(navigator.onLine)syncNow();
-  window.addEventListener("online",()=>{clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,500);});
+  updateSyncStatus();
+  window.addEventListener("online",updateSyncStatus);
   window.addEventListener("offline",updateSyncStatus);
-  setInterval(()=>{if(navigator.onLine&&role)syncNow()},15000);
+  
   updateSyncStatus();
 })();
 </script>
