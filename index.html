@@ -16,8 +16,53 @@
 const KEY='italy_mau_store_v1';
 let state={products:[],sales:[],movements:[],ipvs:[],capitalInitial:0,capitalMoves:[],cart:[]};
 const $=id=>document.getElementById(id); const num=v=>Number.isFinite(Number(v))?Number(v):0; const money=v=>new Intl.NumberFormat('es-US',{style:'currency',currency:'USD'}).format(num(v)); const id=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8); const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-function load(){try{const raw=localStorage.getItem(KEY);const s=JSON.parse(raw||'null');if(s&&typeof s==='object')state={...state,...s};}catch(e){alert('No se pudieron leer los datos locales. No se han borrado. Exporta o revisa el almacenamiento del navegador.')} renderAll();$('status').textContent='● Datos locales cargados · '+state.products.length+' productos · '+state.ipvs.length+' IPV guardados'}
-function save(){localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='● Guardado localmente · '+new Date().toLocaleTimeString()}
+const BACKUP_KEY=KEY+'_backup';
+function load(){
+  let loaded=false, problem='';
+  for(const storageKey of [KEY,BACKUP_KEY]){
+    try{
+      const raw=localStorage.getItem(storageKey);
+      if(!raw) continue;
+      const s=JSON.parse(raw);
+      if(s&&typeof s==='object'&&Array.isArray(s.products)&&Array.isArray(s.sales)){
+        state={...state,...s};
+        loaded=true;
+        if(storageKey===BACKUP_KEY) problem=' Se recuperó una copia de respaldo local.';
+        break;
+      }
+    }catch(e){problem=' No se pudo leer una de las copias locales.';}
+  }
+  renderAll();
+  $('status').textContent=(loaded?'● Datos locales cargados':'● No hay datos guardados en este navegador')+' · '+state.products.length+' productos · '+state.ipvs.length+' IPV guardados'+problem;
+  if(problem) console.warn(problem);
+  // Solicita al navegador conservar el almacenamiento del sitio cuando lo permita.
+  if(navigator.storage&&navigator.storage.persist){
+    navigator.storage.persist().then(ok=>{
+      if(!ok) console.info('El navegador no concedió almacenamiento persistente.');
+    }).catch(()=>{});
+  }
+}
+function save(){
+  const payload=JSON.stringify(state);
+  try{
+    // Conserva la última versión válida antes de sustituir los datos principales.
+    const previous=localStorage.getItem(KEY);
+    if(previous){
+      try{
+        const parsed=JSON.parse(previous);
+        if(parsed&&Array.isArray(parsed.products)&&Array.isArray(parsed.sales)) localStorage.setItem(BACKUP_KEY,previous);
+      }catch(e){}
+    }
+    localStorage.setItem(KEY,payload);
+    $('status').textContent='● Guardado localmente · '+new Date().toLocaleTimeString();
+    return true;
+  }catch(e){
+    $('status').textContent='⚠ ERROR: no se pudieron guardar los datos. Exporta un respaldo ahora.';
+    alert('ERROR DE ALMACENAMIENTO: los cambios no se pudieron guardar en este navegador. No cierres la página todavía. Usa “Exportar respaldo” y revisa que Chrome no esté borrando los datos del sitio.');
+    console.error('No se pudo guardar localStorage:',e);
+    return false;
+  }
+}
 function tab(name){document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id===name));document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));if(name==='products')renderProducts();if(name==='sales')renderSales();if(name==='inventory')renderInventory();if(name==='capital')renderCapital();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>tab(b.dataset.tab)));
 function openProduct(productId=''){const p=state.products.find(x=>x.id===productId);$('productId').value=p?.id||'';$('formTitle').textContent=p?'Editar producto':'Alta de producto';$('pName').value=p?.name||'';$('pPrice').value=p?.price??'';$('pCost').value=p?.cost??'';$('pStock').value=p?.stock??'';$('pUnit').value=p?.unit||'unidad';tab('products');$('pName').focus()}
@@ -46,7 +91,7 @@ function currentCapital(){const inTotal=state.capitalMoves.filter(x=>x.type==='i
 function inventoryCost(){return state.products.reduce((s,p)=>s+Math.max(0,num(p.stock))*Math.max(0,num(p.cost)),0)}
 // Caja física: capital inicial + ventas cobradas en efectivo. Las compras deben registrarse aparte si se desea reflejar el efectivo real.
 function getCashInBox(){return num(state.capitalInitial)+state.sales.filter(s=>String(s.payment).toLowerCase()==='efectivo').reduce((s,x)=>s+num(x.total),0)-state.movements.filter(x=>x.type==='purchase').reduce((s,x)=>s+x.qty*x.cost,0)}
-function saveCapital(){const v=num($('capitalInitial').value);if($('capitalInitial').value===''||v<0)return alert('Introduce un capital inicial válido.');state.capitalInitial=v;save();renderCapital();alert('Capital inicial guardado.')}
+function saveCapital(){const raw=$('capitalInitial').value,v=num(raw);if(raw===''||!Number.isFinite(v)||v<0)return alert('Introduce un capital inicial válido.');const previous=state.capitalInitial;state.capitalInitial=v;if(!save()){state.capitalInitial=previous;return;}renderCapital();alert('Capital inicial guardado correctamente en este dispositivo.')}
 function capitalMovement(){const amount=num($('capitalAmount').value);if($('capitalAmount').value===''||amount<=0)return alert('Introduce un importe mayor que cero.');const type=$('capitalType').value;state.capitalMoves.push({id:id(),date:new Date().toISOString(),amount,type});$('capitalAmount').value='';save();renderCapital()}
 function renderCapital(){ $('capitalInitial').value=state.capitalInitial||0;$('capitalCurrent').textContent=money(currentCapital());$('capitalProfit').textContent=money(getProfit());$('cashBox').textContent=money(getCashInBox());$('stockCost').textContent=money(inventoryCost());$('capitalMovements').innerHTML=state.capitalMoves.slice().reverse().map(m=>`<div class="item">${new Date(m.date).toLocaleDateString()} · ${m.type==='in'?'Aporte':'Retiro'} · ${money(m.amount)}</div>`).join('')||'<p class="muted">No hay movimientos.</p>'}
 function renderHome(){$('mProducts').textContent=state.products.length;$('mStock').textContent=state.products.reduce((s,p)=>s+num(p.stock),0);$('mSales').textContent=state.sales.length;$('mProfit').textContent=money(getProfit())}
@@ -54,5 +99,8 @@ function renderAll(){renderHome();renderProducts();renderSelects();renderCart();
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='italy-mau-respaldo-'+today()+'.json';a.click();URL.revokeObjectURL(url)}
 function importData(e){const f=e.target.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{try{const d=JSON.parse(reader.result);if(!d||!Array.isArray(d.products)||!Array.isArray(d.sales))throw Error('Formato inválido');if(!confirm('Importar reemplazará los datos locales actuales. ¿Continuar?'))return;state={...state,...d};save();renderAll();alert('Respaldo importado.')}catch(err){alert('No se pudo importar el respaldo: '+err.message)}e.target.value=''};reader.readAsText(f)}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// Intenta completar un guardado al pasar la app a segundo plano o cerrar la pestaña.
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){console.warn('Guardado al ocultar la app falló',e);}}});
+window.addEventListener('pagehide',()=>{try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){console.warn('Guardado al cerrar la página falló',e);}});
 load();
 </script></body></html>
